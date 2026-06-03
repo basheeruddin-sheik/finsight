@@ -140,14 +140,15 @@ If you want the app always available without your laptop being on:
 
 ```
 personal-finance/
-├── TRACKER.md
-├── SPEC.md
-├── DATA-MODELS.md
-├── API.md
-├── PHASE-1.md
-├── PHASE-2.md
-├── PHASE-3.md
-├── PHASE-4.md
+├── docs/
+│   ├── TRACKER.md
+│   ├── SPEC.md
+│   ├── DATA-MODELS.md
+│   ├── API.md
+│   ├── PHASE-1.md
+│   ├── PHASE-2.md
+│   ├── PHASE-3.md
+│   └── PHASE-4.md
 ├── server/
 │   ├── src/
 │   │   ├── transactions/

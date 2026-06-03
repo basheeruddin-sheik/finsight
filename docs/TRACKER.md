@@ -8,8 +8,8 @@
 
 | Phase | Title               | Status      |
 |-------|---------------------|-------------|
-| 1     | Core Setup          | NOT STARTED |
-| 2     | People & Money      | NOT STARTED |
+| 1     | Core Setup          | DONE        |
+| 2     | People & Money      | DONE        |
 | 3     | Insights & Budgets  | NOT STARTED |
 | 4     | Splitwise + PWA     | NOT STARTED |
 
@@ -19,16 +19,16 @@
 
 | #    | Task                                                        | Done |
 |------|-------------------------------------------------------------|------|
-| 1.1  | Initialize NestJS project (`server/`)                       | [ ]  |
-| 1.2  | Initialize React + Vite + Tailwind project (`frontend/`)    | [ ]  |
-| 1.3  | Setup Prisma with SQLite — define full schema               | [ ]  |
-| 1.4  | Run first migration, verify DB file created                 | [ ]  |
-| 1.5  | Transaction CRUD API                                        | [ ]  |
-| 1.6  | Transaction summary API (`GET /transactions/summary`)       | [ ]  |
-| 1.7  | Home screen UI — Income / Spent / Family / Saved snapshot   | [ ]  |
-| 1.8  | Quick Add screen — full transaction entry form              | [ ]  |
-| 1.9  | Transactions list screen — list with filters                | [ ]  |
-| 1.10 | Connect frontend to backend, end-to-end working             | [ ]  |
+| 1.1  | Initialize NestJS project (`server/`)                       | [x]  |
+| 1.2  | Setup Prisma with SQLite + run first migration              | [x]  |
+| 1.3  | Transaction CRUD API                                        | [x]  |
+| 1.4  | Transaction summary API (`GET /transactions/summary`)       | [x]  |
+| 1.5  | Initialize React + Vite + Tailwind project (`frontend/`)    | [x]  |
+| 1.6  | Setup API client (`src/api/`)                               | [x]  |
+| 1.7  | Home screen UI — Income / Spent / Family / Saved snapshot   | [x]  |
+| 1.8  | Quick Add screen — full transaction entry form              | [x]  |
+| 1.9  | Transactions list screen — list with filters                | [x]  |
+| 1.10 | Connect frontend to backend, end-to-end working             | [x]  |
 
 **Phase 1 done when:** You can open the app, add a transaction, and see it reflected on the home screen.
 
@@ -38,13 +38,14 @@
 
 | #   | Task                                                         | Done |
 |-----|--------------------------------------------------------------|------|
-| 2.1 | Persons API (CRUD)                                           | [ ]  |
-| 2.2 | Borrows API — create, record payment, settle                 | [ ]  |
-| 2.3 | Interest calculation logic                                   | [ ]  |
-| 2.4 | Borrows screen — active list, per-person ledger, add payment | [ ]  |
-| 2.5 | Family screen — per-member history, monthly total            | [ ]  |
-| 2.6 | Friends & Splits screen — net balance per friend             | [ ]  |
-| 2.7 | Manual split entry                                           | [ ]  |
+| 2.1 | Persons API (CRUD)                                           | [x]  |
+| 2.2 | Borrows API — create, record payment, settle                 | [x]  |
+| 2.3 | Interest calculation logic                                   | [x]  |
+| 2.4 | Splits API — manual balance entry                            | [x]  |
+| 2.5 | Borrows screen — active list, per-person ledger, add payment | [x]  |
+| 2.6 | Family screen — per-member history, monthly total            | [x]  |
+| 2.7 | Friends & Splits screen — net balance per friend             | [x]  |
+| 2.8 | Persons management screen                                    | [x]  |
 
 **Phase 2 done when:** You can add a borrow, record a partial return, and see family transfers separately.
 
@@ -58,11 +59,9 @@
 | 3.2 | Category trend API (last 6 months)                      | [ ]  |
 | 3.3 | Savings rate trend API                                  | [ ]  |
 | 3.4 | Money outside API (borrows + unsettled splits)          | [ ]  |
-| 3.5 | Reports screen — monthly category breakdown chart       | [ ]  |
-| 3.6 | Savings rate trend chart                                | [ ]  |
-| 3.7 | Money outside screen                                    | [ ]  |
-| 3.8 | Budgets API (CRUD)                                      | [ ]  |
-| 3.9 | Budgets screen — limits, spent so far, % used, alerts   | [ ]  |
+| 3.5 | Budgets API (CRUD)                                      | [ ]  |
+| 3.6 | Reports screen (breakdown, trends, money outside)       | [ ]  |
+| 3.7 | Budgets screen — limits, spent so far, % used, alerts   | [ ]  |
 
 **Phase 3 done when:** You can see where your money went this month and whether you're over budget.
 

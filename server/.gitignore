@@ -1,0 +1,23 @@
+# Build output
+/dist
+
+# Dependencies
+node_modules
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Database
+prisma/**/*.db
+prisma/**/*.db-journal
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+
+/generated/prisma

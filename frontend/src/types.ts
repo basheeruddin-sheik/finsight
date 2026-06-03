@@ -1,0 +1,43 @@
+export type TransactionType = 'INCOME' | 'EXPENSE' | 'FAMILY_TRANSFER' | 'BORROW_GIVEN' | 'BORROW_RECEIVED';
+export type Category = 'FOOD_DINING' | 'GROCERIES' | 'SHOPPING' | 'FUEL_TRAVEL' | 'SUBSCRIPTIONS' | 'MEDICAL' | 'ENTERTAINMENT' | 'UTILITIES' | 'OTHER';
+export type PaymentMethod = 'GPAY' | 'PHONEPE' | 'PAYTM' | 'CASH' | 'CREDIT_CARD' | 'BANK_TRANSFER' | 'OTHER';
+
+export interface Person {
+  id: number;
+  name: string;
+  type: 'FRIEND' | 'FAMILY';
+  phone: string | null;
+}
+
+export interface Transaction {
+  id: number;
+  type: TransactionType;
+  amount: number;
+  date: string;
+  category: Category | null;
+  paymentMethod: PaymentMethod;
+  personId: number | null;
+  note: string | null;
+  createdAt: string;
+  person: Person | null;
+}
+
+export interface TransactionSummary {
+  income: number;
+  expenses: number;
+  familyTransfers: number;
+  borrowsGiven: number;
+  borrowRecoveries: number;
+  realSavings: number;
+  savingsRate: number;
+}
+
+export interface CreateTransactionDto {
+  type: TransactionType;
+  amount: number;
+  date: string;
+  category?: Category;
+  paymentMethod: PaymentMethod;
+  personId?: number;
+  note?: string;
+}
