@@ -7,8 +7,8 @@ export const getBudgets = (month: string): Promise<Budget[]> =>
 export const createBudget = (data: { category: string; monthlyLimit: number; month: string }): Promise<Budget> =>
   client.post('/budgets', data).then(r => r.data);
 
-export const updateBudget = (id: number, monthlyLimit: number): Promise<Budget> =>
+export const updateBudget = (id: string, monthlyLimit: number): Promise<Budget> =>
   client.put(`/budgets/${id}`, { monthlyLimit }).then(r => r.data);
 
-export const deleteBudget = (id: number): Promise<void> =>
+export const deleteBudget = (id: string): Promise<void> =>
   client.delete(`/budgets/${id}`).then(r => r.data);

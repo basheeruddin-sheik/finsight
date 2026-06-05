@@ -100,7 +100,7 @@ export default function Borrows() {
     setAbError('');
     try {
       await createBorrow({
-        personId: +ab.personId,
+        personId: ab.personId,
         principal,
         interestRate: Number(ab.interestRate) || 0,
         startDate: ab.startDate,

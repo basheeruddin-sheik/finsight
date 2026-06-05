@@ -64,7 +64,7 @@ export default function Splits() {
     if (back === null) { setAddError('Enter valid amounts'); return; }
     setAddError('');
     try {
-      await setManualSplit(+newPersonId, back);
+      await setManualSplit(newPersonId, back);
       setShowAddModal(false);
       setNewPersonId('');
       setNewTotalPaid('');

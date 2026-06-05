@@ -20,11 +20,11 @@ export class BudgetsController {
 
   @Put(':id')
   update(@Param('id') id: string, @Body() dto: UpdateBudgetDto) {
-    return this.budgetsService.update(Number(id), dto);
+    return this.budgetsService.update(id, dto);
   }
 
   @Delete(':id')
   delete(@Param('id') id: string) {
-    return this.budgetsService.delete(Number(id));
+    return this.budgetsService.delete(id);
   }
 }

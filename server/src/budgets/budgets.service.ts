@@ -1,57 +1,70 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Budget, BudgetDocument } from '../schemas/budget.schema';
+import { Transaction, TransactionDocument } from '../schemas/transaction.schema';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
 
+function round(n: number) { return Math.round(n * 100) / 100; }
+
 @Injectable()
 export class BudgetsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    @InjectModel(Budget.name)      private budgetModel: Model<BudgetDocument>,
+    @InjectModel(Transaction.name) private txnModel: Model<TransactionDocument>,
+  ) {}
 
   async findAll(month: string) {
     const [year, mon] = month.split('-').map(Number);
     const from = new Date(year, mon - 1, 1);
-    const to = new Date(year, mon, 1);
+    const to   = new Date(year, mon, 1);
 
-    const budgets = await this.prisma.budget.findMany({ where: { month } });
+    const [budgets, txns] = await Promise.all([
+      this.budgetModel.find({ month }),
+      this.txnModel.find({ date: { $gte: from, $lt: to }, type: 'EXPENSE' }),
+    ]);
 
-    const transactions = await this.prisma.transaction.findMany({
-      where: { date: { gte: from, lt: to }, type: 'EXPENSE' },
-    });
-
-    const spentByCategory: Record<string, number> = {};
-    for (const t of transactions) {
+    const spent: Record<string, number> = {};
+    for (const t of txns) {
       const cat = t.category ?? 'OTHER';
-      spentByCategory[cat] = (spentByCategory[cat] ?? 0) + t.amount;
+      spent[cat] = (spent[cat] ?? 0) + t.amount;
     }
 
     return budgets.map(b => {
-      const spent = Math.round((spentByCategory[b.category] ?? 0) * 100) / 100;
-      const percentUsed = Math.round((spent / b.monthlyLimit) * 100);
+      const s = round(spent[b.category] ?? 0);
+      const pct = Math.round((s / b.monthlyLimit) * 100);
       return {
-        ...b,
-        spent,
-        percentUsed,
-        overBudget: percentUsed > 100,
+        id: (b._id as any).toString(),
+        category: b.category,
+        monthlyLimit: b.monthlyLimit,
+        month: b.month,
+        spent: s,
+        percentUsed: pct,
+        overBudget: pct > 100,
       };
     });
   }
 
-  create(dto: CreateBudgetDto) {
-    return this.prisma.budget.upsert({
-      where: { category_month: { category: dto.category, month: dto.month } },
-      update: { monthlyLimit: dto.monthlyLimit },
-      create: { category: dto.category, monthlyLimit: dto.monthlyLimit, month: dto.month },
-    });
+  async create(dto: CreateBudgetDto) {
+    await this.budgetModel.findOneAndUpdate(
+      { category: dto.category, month: dto.month },
+      { monthlyLimit: dto.monthlyLimit },
+      { upsert: true, new: true },
+    );
+    const all = await this.findAll(dto.month);
+    return all.find(b => b.category === dto.category) ?? null;
   }
 
-  update(id: number, dto: UpdateBudgetDto) {
-    return this.prisma.budget.update({
-      where: { id },
-      data: { monthlyLimit: dto.monthlyLimit },
-    });
+  async update(id: string, dto: UpdateBudgetDto) {
+    const b = await this.budgetModel.findByIdAndUpdate(id, { monthlyLimit: dto.monthlyLimit }, { new: true });
+    if (!b) return null;
+    const all = await this.findAll(b.month);
+    return all.find(item => item.id === id) ?? null;
   }
 
-  delete(id: number) {
-    return this.prisma.budget.delete({ where: { id } });
+  async delete(id: string) {
+    await this.budgetModel.findByIdAndDelete(id);
+    return { deleted: true };
   }
 }

@@ -1,5 +1,5 @@
 export class CreateBorrowDto {
-  personId: number;
+  personId: string;
   principal: number;
   interestRate: number;
   startDate: string;

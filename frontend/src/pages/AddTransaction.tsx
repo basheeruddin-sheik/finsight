@@ -104,7 +104,7 @@ export default function AddTransaction() {
         date,
         category: type === 'EXPENSE' ? category : undefined,
         paymentMethod,
-        personId: needsPerson ? Number(personId) : undefined,
+        personId: needsPerson ? personId : undefined,
         note: note.trim() || undefined,
       });
       navigate('/');

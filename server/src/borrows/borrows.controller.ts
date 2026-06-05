@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { BorrowsService } from './borrows.service';
 import { CreateBorrowDto } from './dto/create-borrow.dto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -23,17 +23,17 @@ export class BorrowsController {
   }
 
   @Post(':id/payment')
-  addPayment(@Param('id', ParseIntPipe) id: number, @Body() dto: CreatePaymentDto) {
+  addPayment(@Param('id') id: string, @Body() dto: CreatePaymentDto) {
     return this.service.addPayment(id, dto);
   }
 
   @Put(':id/settle')
-  settle(@Param('id', ParseIntPipe) id: number) {
+  settle(@Param('id') id: string) {
     return this.service.settle(id);
   }
 
   @Delete(':id')
-  delete(@Param('id', ParseIntPipe) id: number) {
+  delete(@Param('id') id: string) {
     return this.service.delete(id);
   }
 }

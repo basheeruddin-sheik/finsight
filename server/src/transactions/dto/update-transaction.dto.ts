@@ -4,6 +4,6 @@ export class UpdateTransactionDto {
   date?: string;
   category?: string;
   paymentMethod?: string;
-  personId?: number;
+  personId?: string;
   note?: string;
 }

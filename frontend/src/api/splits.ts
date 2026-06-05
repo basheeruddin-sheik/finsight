@@ -12,7 +12,7 @@ export interface SplitBalance {
 export const getSplits = () =>
   client.get<SplitBalance[]>('/splits').then(r => r.data);
 
-export const setManualSplit = (personId: number, balance: number) =>
+export const setManualSplit = (personId: string, balance: number) =>
   client.post('/splits/manual', { personId, balance }).then(r => r.data);
 
 export const syncSplitwise = () =>

@@ -12,10 +12,10 @@ export const getTransactions = (filters?: {
 export const createTransaction = (dto: CreateTransactionDto) =>
   client.post<Transaction>('/transactions', dto).then(r => r.data);
 
-export const updateTransaction = (id: number, dto: Partial<CreateTransactionDto>) =>
+export const updateTransaction = (id: string, dto: Partial<CreateTransactionDto>) =>
   client.put<Transaction>(`/transactions/${id}`, dto).then(r => r.data);
 
-export const deleteTransaction = (id: number) =>
+export const deleteTransaction = (id: string) =>
   client.delete(`/transactions/${id}`).then(r => r.data);
 
 export const getSummary = (month: string) =>

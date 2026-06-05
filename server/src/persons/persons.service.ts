@@ -1,35 +1,40 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { Person, PersonDocument } from '../schemas/person.schema';
+import { Transaction, TransactionDocument } from '../schemas/transaction.schema';
+import { Borrow, BorrowDocument } from '../schemas/borrow.schema';
+import { SplitBalance, SplitBalanceDocument } from '../schemas/split-balance.schema';
 import { CreatePersonDto } from './dto/create-person.dto';
 
 @Injectable()
 export class PersonsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    @InjectModel(Person.name)        private personModel: Model<PersonDocument>,
+    @InjectModel(Transaction.name)   private txnModel: Model<TransactionDocument>,
+    @InjectModel(Borrow.name)        private borrowModel: Model<BorrowDocument>,
+    @InjectModel(SplitBalance.name)  private splitModel: Model<SplitBalanceDocument>,
+  ) {}
 
-  findAll(type?: string) {
-    return this.prisma.person.findMany({
-      where: type ? { type } : undefined,
-      orderBy: { name: 'asc' },
-    });
+  async findAll(type?: string) {
+    const where = type ? { type } : {};
+    return this.personModel.find(where).sort({ name: 1 });
   }
 
-  create(dto: CreatePersonDto) {
-    return this.prisma.person.create({ data: dto });
+  async create(dto: CreatePersonDto) {
+    return this.personModel.create(dto);
   }
 
-  async delete(id: number) {
+  async delete(id: string) {
+    const oid = new Types.ObjectId(id);
     const [txCount, borrowCount] = await Promise.all([
-      this.prisma.transaction.count({ where: { personId: id } }),
-      this.prisma.borrow.count({ where: { personId: id } }),
+      this.txnModel.countDocuments({ personId: oid }),
+      this.borrowModel.countDocuments({ personId: oid }),
     ]);
-
     if (txCount > 0 || borrowCount > 0) {
-      throw new BadRequestException(
-        'Cannot delete person with linked transactions or borrows.',
-      );
+      throw new BadRequestException('Cannot delete person with linked transactions or borrows.');
     }
-
-    await this.prisma.splitBalance.deleteMany({ where: { personId: id } });
-    return this.prisma.person.delete({ where: { id } });
+    await this.splitModel.deleteOne({ personId: oid });
+    return this.personModel.findByIdAndDelete(id);
   }
 }

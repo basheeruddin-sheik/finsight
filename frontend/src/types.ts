@@ -3,20 +3,20 @@ export type Category = 'FOOD_DINING' | 'GROCERIES' | 'SHOPPING' | 'FUEL_TRAVEL' 
 export type PaymentMethod = 'GPAY' | 'PHONEPE' | 'PAYTM' | 'CASH' | 'CREDIT_CARD' | 'BANK_TRANSFER' | 'OTHER';
 
 export interface Person {
-  id: number;
+  id: string;
   name: string;
   type: 'FRIEND' | 'FAMILY';
   phone: string | null;
 }
 
 export interface Transaction {
-  id: number;
+  id: string;
   type: TransactionType;
   amount: number;
   date: string;
   category: string | null;
   paymentMethod: PaymentMethod;
-  personId: number | null;
+  personId: string | null;
   note: string | null;
   createdAt: string;
   person: Person | null;
@@ -59,7 +59,7 @@ export interface MoneyOutside {
 }
 
 export interface Budget {
-  id: number;
+  id: string;
   category: string;
   monthlyLimit: number;
   month: string;
@@ -74,6 +74,6 @@ export interface CreateTransactionDto {
   date: string;
   category?: string;
   paymentMethod: PaymentMethod;
-  personId?: number;
+  personId?: string;
   note?: string;
 }
