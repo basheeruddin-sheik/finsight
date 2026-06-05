@@ -6,8 +6,8 @@ import {
 } from 'recharts';
 import { getMonthlyBreakdown, getSavingsRateTrend, getMoneyOutside } from '../api/reports';
 import type { MonthlyBreakdown, SavingsRateMonth, MoneyOutside } from '../types';
-import { formatAmount, currentMonth, CATEGORY_LABELS, PAYMENT_LABELS } from '../utils';
-import type { Category, PaymentMethod } from '../types';
+import { formatAmount, currentMonth, getCategoryLabel, PAYMENT_LABELS } from '../utils';
+import type { PaymentMethod } from '../types';
 
 const PIE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#8b5cf6', '#14b8a6'];
 
@@ -80,7 +80,7 @@ export default function Reports() {
                 {breakdown?.categories.map(c => {
                   const max = breakdown.categories[0]?.total ?? 1;
                   const pct = Math.round((c.total / max) * 100);
-                  const label = CATEGORY_LABELS[c.category as Category] ?? c.category;
+                  const label = getCategoryLabel(c.category);
                   return (
                     <div key={c.category}>
                       <div className="flex justify-between text-xs text-gray-600 mb-0.5">

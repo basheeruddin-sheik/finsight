@@ -9,6 +9,7 @@ import Splits from './pages/Splits';
 import Persons from './pages/Persons';
 import Reports from './pages/Reports';
 import Budgets from './pages/Budgets';
+import Settings from './pages/Settings';
 
 function PeopleHub() {
   const navigate = useNavigate();
@@ -16,9 +17,10 @@ function PeopleHub() {
     <div className="p-4 flex flex-col gap-3 pb-24">
       <h1 className="text-lg font-semibold text-gray-700">People</h1>
       {[
-        { path: '/splits',  label: 'Friends & Splits', desc: 'Net balances with friends',        icon: '🤝' },
-        { path: '/family',  label: 'Family',            desc: 'Transfer history per member',      icon: '👨‍👩‍👦' },
-        { path: '/persons', label: 'Manage People',     desc: 'Add or remove friends & family',   icon: '⚙️' },
+        { path: '/splits',   label: 'Friends & Splits', desc: 'Net balances with friends',             icon: '🤝' },
+        { path: '/family',   label: 'Family',            desc: 'Transfer history per member',           icon: '👨‍👩‍👦' },
+        { path: '/persons',  label: 'Manage People',     desc: 'Add or remove friends & family',        icon: '👤' },
+        { path: '/settings', label: 'Customize',         desc: 'Custom categories & type names',        icon: '⚙️' },
       ].map(item => (
         <button key={item.path} onClick={() => navigate(item.path)}
           className="bg-white rounded-xl p-4 flex items-center gap-4 border border-gray-100 shadow-sm text-left w-full">
@@ -71,6 +73,7 @@ export default function App() {
           <Route path="/insights" element={<InsightsHub />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/budgets" element={<Budgets />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
         <BottomNav />
       </div>

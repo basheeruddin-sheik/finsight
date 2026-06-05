@@ -6,13 +6,13 @@
 
 ## Overall Status
 
-| Phase | Title                        | Status      |
-|-------|------------------------------|-------------|
-| 1     | Core Setup                   | DONE        |
-| 2     | People & Money               | DONE        |
-| 3     | Insights & Budgets           | DONE        |
-| 4     | Splitwise + PWA              | DONE        |
-| 5     | Google Apps Script + Vercel  | NOT STARTED |
+| Phase | Title                            | Status      |
+|-------|----------------------------------|-------------|
+| 1     | Core Setup                       | DONE        |
+| 2     | People & Money                   | DONE        |
+| 3     | Insights & Budgets               | DONE        |
+| 4     | PWA + UI Polish                  | DONE        |
+| 5     | MongoDB + Railway + Vercel       | NOT STARTED |
 
 ---
 
@@ -68,41 +68,51 @@
 
 ---
 
-## Phase 4 — Splitwise + PWA
+## Phase 4 — PWA + UI Polish
 
 | #   | Task                                                        | Done |
 |-----|-------------------------------------------------------------|------|
-| 4.1 | Add Splitwise API key to env config                         | [x]  |
-| 4.2 | Splitwise sync API — pull friend balances                   | [x]  |
-| 4.3 | Merge Splitwise balances with manual entries                | [x]  |
-| 4.4 | Update Friends & Splits screen with synced data             | [x]  |
-| 4.5 | Add PWA manifest (`manifest.json`)                          | [x]  |
-| 4.6 | Add service worker for offline support                      | [x]  |
-| 4.7 | Test on iPhone — Add to Home Screen, verify it works        | [ ]  |
+| 4.1 | Add PWA manifest (`manifest.json`)                          | [x]  |
+| 4.2 | Add service worker for offline support                      | [x]  |
+| 4.3 | Transaction edit functionality                              | [x]  |
+| 4.4 | Contextual note field per transaction type                  | [x]  |
+| 4.5 | Custom categories (localStorage)                            | [x]  |
+| 4.6 | Custom type label names (localStorage)                      | [x]  |
+| 4.7 | Splits — remove Splitwise, manual "total paid / my share"   | [x]  |
+| 4.8 | Test PWA on iPhone — Add to Home Screen, verify it works    | [ ]  |
 
-**Phase 4 done when:** App is on your iPhone home screen and Splitwise balances sync with one tap.
+**Phase 4 done when:** App is installable on iPhone home screen and all UI flows work cleanly.
 
 ---
 
-## Phase 5 — Google Apps Script + Vercel
+## Phase 5 — MongoDB Atlas + Railway + Vercel
 
-> Goal: eliminate the laptop entirely. Data lives in Google Sheets, logic runs in Apps Script,
-> UI is hosted on Vercel. Open the app from iPhone anywhere with no servers to manage.
+> Goal: eliminate the laptop entirely. NestJS backend runs on Railway (free),
+> data lives in MongoDB Atlas (free 512MB cluster), frontend on Vercel.
+> Access from iPhone anywhere via custom GoDaddy domain.
 
-| #   | Task                                                                  | Done |
-|-----|-----------------------------------------------------------------------|------|
-| 5.1 | Create Google Spreadsheet with all 6 sheet tabs                       | [ ]  |
-| 5.2 | Create Google Cloud project + enable Sheets API (not needed for GAS)  | [ ]  |
-| 5.3 | Open Apps Script editor, paste `Code.gs`, run `setupSheets()`        | [ ]  |
-| 5.4 | Deploy Apps Script as web app (anyone, execute as me) → copy URL     | [ ]  |
-| 5.5 | Update frontend `VITE_API_URL` to the Apps Script URL                 | [ ]  |
-| 5.6 | Update API client to route calls through Apps Script format           | [ ]  |
-| 5.7 | Test all flows locally with Apps Script URL                           | [ ]  |
-| 5.8 | Deploy frontend to Vercel, set `VITE_API_URL` env var in Vercel       | [ ]  |
-| 5.9 | Open on iPhone — verify all CRUD, borrows, budgets, reports work      | [ ]  |
-| 5.10| (Optional) Migrate existing SQLite data to the Google Sheet           | [ ]  |
+### Architecture
+```
+yourdomain.com         → Vercel  (React PWA)
+api.yourdomain.com     → Railway (NestJS)
+                              ↓
+                       MongoDB Atlas (free cluster)
+```
 
-**Phase 5 done when:** App opens on iPhone from the Vercel URL, all data reads and writes go to Google Sheets, no laptop required.
+| #   | Task                                                                        | Done |
+|-----|-----------------------------------------------------------------------------|------|
+| 5.1 | Create MongoDB Atlas free cluster, get connection string                    | [ ]  |
+| 5.2 | Replace Prisma/SQLite with Mongoose in NestJS server                        | [ ]  |
+| 5.3 | Test all API endpoints locally with MongoDB                                 | [ ]  |
+| 5.4 | Push to GitHub, deploy NestJS to Railway, set `MONGODB_URI` env var         | [ ]  |
+| 5.5 | Deploy frontend to Vercel, set `VITE_API_URL` to Railway URL                | [ ]  |
+| 5.6 | Point GoDaddy domain DNS → Vercel (frontend) + Railway (api subdomain)      | [ ]  |
+| 5.7 | Update `VITE_API_URL` to custom domain (`api.yourdomain.com`)               | [ ]  |
+| 5.8 | Test all features end-to-end on deployed URL                                | [ ]  |
+| 5.9 | Install PWA on iPhone from Vercel/custom domain URL, verify all flows       | [ ]  |
+| 5.10| (Optional) Migrate existing SQLite data to MongoDB                          | [ ]  |
+
+**Phase 5 done when:** App opens on iPhone from custom domain, all data reads/writes go to MongoDB via Railway, no laptop required.
 
 ---
 

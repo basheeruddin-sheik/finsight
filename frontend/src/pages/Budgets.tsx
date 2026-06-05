@@ -1,13 +1,8 @@
 import { useEffect, useState } from 'react';
 import { getBudgets, createBudget, updateBudget, deleteBudget } from '../api/budgets';
 import type { Budget } from '../types';
-import { formatAmount, currentMonth, CATEGORY_LABELS } from '../utils';
-import type { Category } from '../types';
-
-const ALL_CATEGORIES: Category[] = [
-  'FOOD_DINING', 'GROCERIES', 'SHOPPING', 'FUEL_TRAVEL',
-  'SUBSCRIPTIONS', 'MEDICAL', 'ENTERTAINMENT', 'UTILITIES', 'OTHER',
-];
+import { formatAmount, currentMonth, getCategoryLabel } from '../utils';
+import { BUILTIN_CATEGORIES, getSettings } from '../settings';
 
 function prevMonth(m: string) {
   const [y, mo] = m.split('-').map(Number);
@@ -40,7 +35,7 @@ export default function Budgets() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editLimit, setEditLimit] = useState('');
   const [adding, setAdding] = useState(false);
-  const [newCategory, setNewCategory] = useState<Category>('FOOD_DINING');
+  const [newCategory, setNewCategory] = useState('FOOD_DINING');
   const [newLimit, setNewLimit] = useState('');
   const [addError, setAddError] = useState('');
   const [editError, setEditError] = useState('');
@@ -54,8 +49,12 @@ export default function Budgets() {
 
   useEffect(() => { load(month); }, [month]);
 
+  const allCategories = [
+    ...BUILTIN_CATEGORIES,
+    ...getSettings().customCategories.map(c => ({ key: c, label: c })),
+  ];
   const budgetedCategories = new Set(budgets.map(b => b.category));
-  const availableCategories = ALL_CATEGORIES.filter(c => !budgetedCategories.has(c));
+  const availableCategories = allCategories.filter(c => !budgetedCategories.has(c.key));
 
   async function handleAdd() {
     const val = Number(newLimit);
@@ -122,7 +121,7 @@ export default function Budgets() {
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-medium text-gray-800">
-                      {CATEGORY_LABELS[b.category as Category] ?? b.category}
+                      {getCategoryLabel(b.category)}
                     </span>
                     {b.overBudget && (
                       <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium">Over!</span>
@@ -175,11 +174,11 @@ export default function Budgets() {
                 <p className="text-sm font-medium text-gray-700">Add Budget</p>
                 <select
                   value={newCategory}
-                  onChange={e => setNewCategory(e.target.value as Category)}
+                  onChange={e => setNewCategory(e.target.value)}
                   className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
                 >
                   {availableCategories.map(c => (
-                    <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                    <option key={c.key} value={c.key}>{c.label}</option>
                   ))}
                 </select>
                 <input
@@ -197,7 +196,7 @@ export default function Budgets() {
               </div>
             ) : (
               <button
-                onClick={() => { setAdding(true); setNewCategory(availableCategories[0]); }}
+                onClick={() => { setAdding(true); setNewCategory(availableCategories[0]?.key ?? 'FOOD_DINING'); }}
                 className="w-full border-2 border-dashed border-gray-200 rounded-2xl py-4 text-sm text-gray-400 hover:border-gray-300 hover:text-gray-500 transition-colors"
               >
                 + Add budget for a category

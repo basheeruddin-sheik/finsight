@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getSummary, getTransactions } from '../api/transactions';
 import type { Transaction, TransactionSummary } from '../types';
-import { formatAmount, formatDate, currentMonth, TYPE_LABELS, CATEGORY_LABELS, TYPE_COLOR } from '../utils';
+import { formatAmount, formatDate, currentMonth, TYPE_LABELS, getCategoryLabel, TYPE_COLOR } from '../utils';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -76,7 +76,7 @@ export default function Home() {
               <div key={t.id} className="bg-white rounded-xl p-3 flex items-center justify-between shadow-sm border border-gray-100">
                 <div className="flex flex-col">
                   <span className="text-sm font-medium text-gray-800">
-                    {t.category ? CATEGORY_LABELS[t.category] : TYPE_LABELS[t.type]}
+                    {t.category ? getCategoryLabel(t.category) : TYPE_LABELS[t.type]}
                   </span>
                   <span className="text-xs text-gray-400">{formatDate(t.date)} · {t.note || TYPE_LABELS[t.type]}</span>
                 </div>

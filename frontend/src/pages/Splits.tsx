@@ -1,15 +1,9 @@
 import { useEffect, useState } from 'react';
-import { getSplits, setManualSplit, syncSplitwise, type SplitBalance } from '../api/splits';
+import { getSplits, setManualSplit, type SplitBalance } from '../api/splits';
 import { getPersons } from '../api/persons';
 import type { Person } from '../types';
 import { formatAmount } from '../utils';
 import FAB from '../components/FAB';
-
-function fmtSyncTime(ts: string | null) {
-  if (!ts) return null;
-  const d = new Date(ts);
-  return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-}
 
 export default function Splits() {
   const [splits, setSplits] = useState<SplitBalance[]>([]);
@@ -18,10 +12,9 @@ export default function Splits() {
   const [editAmount, setEditAmount] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newPersonId, setNewPersonId] = useState('');
-  const [newBalance, setNewBalance] = useState('');
+  const [newTotalPaid, setNewTotalPaid] = useState('');
+  const [newMyShare, setNewMyShare] = useState('');
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [saveError, setSaveError] = useState('');
   const [addError, setAddError] = useState('');
 
@@ -58,33 +51,27 @@ export default function Splits() {
     }
   };
 
+  const toGetBack = () => {
+    const paid = parseFloat(newTotalPaid);
+    const share = parseFloat(newMyShare);
+    if (!isNaN(paid) && !isNaN(share)) return paid - share;
+    return null;
+  };
+
   const handleAdd = async () => {
     if (!newPersonId) { setAddError('Select a friend'); return; }
-    const val = parseFloat(newBalance);
-    if (!newBalance || isNaN(val)) { setAddError('Enter a valid balance'); return; }
+    const back = toGetBack();
+    if (back === null) { setAddError('Enter valid amounts'); return; }
     setAddError('');
     try {
-      await setManualSplit(+newPersonId, val);
+      await setManualSplit(+newPersonId, back);
       setShowAddModal(false);
       setNewPersonId('');
-      setNewBalance('');
+      setNewTotalPaid('');
+      setNewMyShare('');
       load();
     } catch {
       setAddError('Failed to save. Try again.');
-    }
-  };
-
-  const handleSync = async () => {
-    setSyncing(true);
-    setSyncMsg(null);
-    try {
-      const result = await syncSplitwise();
-      setSyncMsg(`Synced ${result.synced} of ${result.total} friends`);
-      load();
-    } catch {
-      setSyncMsg('Sync failed — check API key');
-    } finally {
-      setSyncing(false);
     }
   };
 
@@ -109,20 +96,6 @@ export default function Splits() {
             {net >= 0 ? '+' : ''}{formatAmount(net)}
           </p>
         </div>
-      </div>
-
-      {/* Sync row */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-100">
-        <p className="text-xs text-gray-400">
-          {syncMsg ?? 'Sync balances from Splitwise'}
-        </p>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="px-3 py-1.5 bg-gray-900 text-white text-xs rounded-lg disabled:opacity-50"
-        >
-          {syncing ? 'Syncing…' : 'Sync Splitwise'}
-        </button>
       </div>
 
       <div className="p-4 flex flex-col gap-2">
@@ -160,14 +133,9 @@ export default function Splits() {
                 >
                   <div>
                     <p className="font-medium text-gray-800">{s.name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${s.source === 'SPLITWISE' ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
-                        {s.source}
-                      </span>
-                      {s.lastSyncedAt && (
-                        <span className="text-[10px] text-gray-400">{fmtSyncTime(s.lastSyncedAt)}</span>
-                      )}
-                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {s.balance >= 0 ? 'Owes you' : 'You owe'}
+                    </p>
                   </div>
                   <p className={`text-base font-bold ${s.balance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                     {s.balance >= 0 ? '+' : ''}{formatAmount(s.balance)}
@@ -186,7 +154,7 @@ export default function Splits() {
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 z-30 flex items-end">
           <div className="bg-white rounded-t-2xl w-full p-5 flex flex-col gap-4">
-            <h2 className="text-lg font-semibold">Add Balance</h2>
+            <h2 className="text-lg font-semibold">Add Split</h2>
             <select
               value={newPersonId}
               onChange={e => setNewPersonId(e.target.value)}
@@ -195,16 +163,39 @@ export default function Splits() {
               <option value="">Select friend...</option>
               {availableFriends.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
-            <input
-              type="number"
-              placeholder="Balance (+ they owe you, - you owe them)"
-              value={newBalance}
-              onChange={e => setNewBalance(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl p-3 text-sm"
-            />
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-xs text-gray-400 mb-1 block">Total I paid (₹)</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="e.g. 1000"
+                  value={newTotalPaid}
+                  onChange={e => setNewTotalPaid(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl p-3 text-sm"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs text-gray-400 mb-1 block">My share (₹)</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="e.g. 400"
+                  value={newMyShare}
+                  onChange={e => setNewMyShare(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl p-3 text-sm"
+                />
+              </div>
+            </div>
+            {toGetBack() !== null && (
+              <div className="bg-green-50 rounded-xl p-3 text-center">
+                <p className="text-xs text-gray-400">To get back from {availableFriends.find(f => String(f.id) === newPersonId)?.name ?? 'friend'}</p>
+                <p className="text-xl font-bold text-green-600">{formatAmount(toGetBack()!)}</p>
+              </div>
+            )}
             {addError && <p className="text-sm text-red-500">{addError}</p>}
             <div className="flex gap-2">
-              <button onClick={() => { setShowAddModal(false); setAddError(''); }} className="flex-1 py-3 border border-gray-200 rounded-xl text-sm">Cancel</button>
+              <button onClick={() => { setShowAddModal(false); setAddError(''); setNewTotalPaid(''); setNewMyShare(''); }} className="flex-1 py-3 border border-gray-200 rounded-xl text-sm">Cancel</button>
               <button onClick={handleAdd} className="flex-1 py-3 bg-gray-900 text-white rounded-xl text-sm">Save</button>
             </div>
           </div>

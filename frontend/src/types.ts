@@ -14,7 +14,7 @@ export interface Transaction {
   type: TransactionType;
   amount: number;
   date: string;
-  category: Category | null;
+  category: string | null;
   paymentMethod: PaymentMethod;
   personId: number | null;
   note: string | null;
@@ -72,7 +72,7 @@ export interface CreateTransactionDto {
   type: TransactionType;
   amount: number;
   date: string;
-  category?: Category;
+  category?: string;
   paymentMethod: PaymentMethod;
   personId?: number;
   note?: string;

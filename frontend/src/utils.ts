@@ -1,4 +1,5 @@
-import type { TransactionType, Category, PaymentMethod } from './types';
+import type { TransactionType, PaymentMethod } from './types';
+export { getCategoryLabel } from './settings';
 
 export const formatAmount = (n: number) =>
   '₹' + Math.abs(n).toLocaleString('en-IN');
@@ -21,17 +22,6 @@ export const TYPE_LABELS: Record<TransactionType, string> = {
   BORROW_RECEIVED: 'Borrow Received',
 };
 
-export const CATEGORY_LABELS: Record<Category, string> = {
-  FOOD_DINING: '🍜 Food',
-  GROCERIES: '🛒 Groceries',
-  SHOPPING: '🛍️ Shopping',
-  FUEL_TRAVEL: '⛽ Fuel',
-  SUBSCRIPTIONS: '📱 Subscriptions',
-  MEDICAL: '💊 Medical',
-  ENTERTAINMENT: '🎬 Entertainment',
-  UTILITIES: '💡 Utilities',
-  OTHER: '💰 Other',
-};
 
 export const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   GPAY: 'GPay',

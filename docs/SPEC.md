@@ -11,8 +11,9 @@
 - Know exactly where money is going (by category, payment method, person)
 - Track borrows given — with and without interest
 - Track money sent to family separately from personal expenses
-- See net balance per friend, integrated with Splitwise
+- See net balance per friend (manual entry, no Splitwise dependency)
 - Get one clear monthly savings number
+- Custom categories and type labels per user preference
 
 ---
 
@@ -22,7 +23,7 @@
 - No bank API integration
 - No multi-user support
 - No investment / stock / mutual fund tracking
-- No bill splitting calculator (Splitwise handles that)
+- No Splitwise integration (manual split entry only)
 - No App Store release
 
 ---
@@ -38,15 +39,23 @@
 | API       | REST                    | Simple, no overhead                          |
 | Mobile    | PWA                     | Add to iPhone home screen, no App Store fee  |
 
-### Phase 5 (Production — No Laptop Needed)
-| Layer     | Choice                  | Reason                                              |
-|-----------|-------------------------|-----------------------------------------------------|
-| Frontend  | React + Vite + Tailwind | Same codebase                                       |
-| Hosting   | Vercel (free)           | Global CDN, instant deploys, iPhone accessible      |
-| Backend   | Google Apps Script      | Serverless, zero cost, runs as you, no maintenance  |
-| Database  | Google Sheets           | Editable directly, shareable, always accessible     |
-| API       | GAS Web App URL         | Single HTTPS endpoint, no CORS issues               |
-| Mobile    | PWA on Vercel           | Install on iPhone from Vercel URL                   |
+### Phase 5 (Production)
+| Layer     | Choice                       | Reason                                                   |
+|-----------|------------------------------|----------------------------------------------------------|
+| Frontend  | React + Vite + Tailwind      | Same codebase, zero changes                              |
+| Hosting   | Vercel (free)                | Global CDN, instant deploys, auto HTTPS                  |
+| Backend   | NestJS on Railway (free)     | Real Node.js hosting, auto-deploy from GitHub            |
+| Database  | MongoDB Atlas (free 512MB)   | No ops, scales, proper querying, reliable                |
+| Domain    | GoDaddy custom domain        | yourdomain.com → Vercel, api.yourdomain.com → Railway    |
+| Mobile    | PWA installed from Vercel    | Install on iPhone from custom domain URL                 |
+
+### Why not Google Apps Script / Google Sheets
+Sheets was prototyped and validated but rejected for production:
+- 300–800ms response times (unusable on mobile)
+- Full sheet scan on every request (degrades with data)
+- No data integrity / transactions
+- ~2s cold starts after idle
+- 30 req/min throttle
 
 ---
 
@@ -57,25 +66,14 @@ finsight/
 ├── docs/
 │   ├── TRACKER.md       ← progress tracker (check this first)
 │   ├── SPEC.md          ← this file
-│   ├── DATA-MODELS.md   ← schema / sheet structure
-│   ├── API.md           ← all endpoints (NestJS + GAS)
+│   ├── DATA-MODELS.md   ← schema reference
+│   ├── API.md           ← all endpoints
 │   ├── TEST_CASES.md    ← manual test cases for all screens
-│   ├── Code.gs          ← Google Apps Script (copy into GAS editor)
-│   ├── PHASE-1.md       ← Core Setup
-│   ├── PHASE-2.md       ← People & Money
-│   ├── PHASE-3.md       ← Insights & Budgets
-│   ├── PHASE-4.md       ← Splitwise + PWA
-│   └── PHASE-5.md       ← Google Apps Script + Vercel
-├── server/              ← NestJS backend (local dev only)
-└── frontend/            ← React + Vite (runs locally + deploys to Vercel)
+│   ├── Code.gs          ← Google Apps Script (archived, not in use)
+│   ├── PHASE-1.md through PHASE-5.md
+├── server/              ← NestJS backend
+└── frontend/            ← React + Vite
 ```
-
-### How the API client works
-`frontend/src/api/client.ts` reads `VITE_API_URL` at build time:
-- **Not set / localhost** → calls `http://{hostname}:3000` (NestJS, local dev)
-- **Set to Apps Script URL** → translates REST calls to GAS query-param format automatically
-
-No API file changes needed when switching modes.
 
 ---
 
@@ -88,7 +86,7 @@ Real Savings =
   - Total Personal Expenses
   - Total Family Transfers
   + Borrow Recoveries Received
-  - Interest-free Borrows Given
+  - Borrows Given
 ```
 
 ### Interest Calculation (for borrows with interest)
@@ -98,11 +96,15 @@ Interest owed    = principal × (rate / 100) × (days / 365)
 Total owed       = principal + interest owed
 ```
 
-### Splitwise Sync Rules
-- Pull all friend balances from Splitwise API
-- Match to Person records by name
-- If a MANUAL entry exists for a person, keep manual (don't overwrite)
-- Store lastSyncedAt so user knows when data was last refreshed
+### Splits (Manual)
+- User enters: Total I paid + My share → app computes "to get back" = total - share
+- Stored as a net balance per person (positive = they owe you, negative = you owe them)
+- No Splitwise sync — fully manual
+
+### Customization (localStorage)
+- Custom categories: stored in `localStorage` key `finsight_settings`
+- Custom type labels: rename "Family Transfer" → whatever you want
+- Settings page at `/settings` (People → Customize)
 
 ---
 
@@ -111,10 +113,11 @@ Total owed       = principal + interest owed
 | Screen              | Purpose                                              |
 |---------------------|------------------------------------------------------|
 | Home                | Monthly snapshot — Income / Spent / Family / Saved   |
-| Quick Add           | Fast transaction entry                               |
-| Transactions        | Full list with filters and search                    |
-| Friends & Splits    | Net balance per friend, Splitwise sync               |
+| Quick Add           | Fast transaction entry with contextual note field    |
+| Transactions        | Full list with filters, edit, delete                 |
+| Friends & Splits    | Manual net balance per friend                        |
 | Borrows             | Active borrows, per-person ledger, add payment       |
 | Family              | Per-member transfer history, monthly totals          |
 | Reports             | Category breakdown, savings trend, money outside     |
 | Budgets             | Monthly limits per category, progress bars           |
+| Customize           | Custom categories and type label names               |
