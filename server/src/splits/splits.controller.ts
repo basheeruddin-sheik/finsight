@@ -14,4 +14,9 @@ export class SplitsController {
   setManual(@Body() body: { personId: number; balance: number }) {
     return this.service.setManual(body.personId, body.balance);
   }
+
+  @Post('sync')
+  sync() {
+    return this.service.syncSplitwise();
+  }
 }

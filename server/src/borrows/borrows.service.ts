@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBorrowDto } from './dto/create-borrow.dto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -33,6 +33,9 @@ export class BorrowsService {
   }
 
   async create(dto: CreateBorrowDto) {
+    const person = await this.prisma.person.findUnique({ where: { id: dto.personId } });
+    if (!person) throw new BadRequestException('Person not found');
+
     const borrow = await this.prisma.borrow.create({
       data: {
         personId: dto.personId,
@@ -47,34 +50,49 @@ export class BorrowsService {
   }
 
   async addPayment(id: number, dto: CreatePaymentDto) {
+    const borrow = await this.prisma.borrow.findUnique({ where: { id } });
+    if (!borrow) throw new NotFoundException('Borrow not found');
+    if (borrow.status === 'SETTLED') throw new BadRequestException('Cannot add payment to a settled borrow');
+
     await this.prisma.borrowPayment.create({
       data: { borrowId: id, amount: dto.amount, date: new Date(dto.date), note: dto.note },
     });
 
-    const borrow = await this.prisma.borrow.findUnique({
+    const updated = await this.prisma.borrow.findUnique({
       where: { id },
       include: { payments: true },
     });
 
-    const totalPaid = borrow!.payments.reduce((s, p) => s + p.amount, 0);
-    const totalOwed = calcTotalOwed(borrow!.principal, borrow!.interestRate, new Date(borrow!.startDate), totalPaid);
+    const totalPaid = updated!.payments.reduce((s, p) => s + p.amount, 0);
+    const totalOwed = calcTotalOwed(updated!.principal, updated!.interestRate, new Date(updated!.startDate), totalPaid);
     const newStatus = totalOwed <= 0 ? 'SETTLED' : 'PARTIALLY_RETURNED';
 
-    const updated = await this.prisma.borrow.update({
+    const final = await this.prisma.borrow.update({
       where: { id },
       data: { status: newStatus },
       include: { person: true, payments: { orderBy: { date: 'desc' } } },
     });
-    return enrichBorrow(updated);
+    return enrichBorrow(final);
   }
 
   async settle(id: number) {
+    const borrow = await this.prisma.borrow.findUnique({ where: { id } });
+    if (!borrow) throw new NotFoundException('Borrow not found');
+
     const updated = await this.prisma.borrow.update({
       where: { id },
       data: { status: 'SETTLED' },
       include: { person: true, payments: { orderBy: { date: 'desc' } } },
     });
     return enrichBorrow(updated);
+  }
+
+  async delete(id: number) {
+    const borrow = await this.prisma.borrow.findUnique({ where: { id } });
+    if (!borrow) throw new NotFoundException('Borrow not found');
+
+    await this.prisma.borrowPayment.deleteMany({ where: { borrowId: id } });
+    await this.prisma.borrow.delete({ where: { id } });
   }
 
   async getSummary() {

@@ -32,6 +32,42 @@ export interface TransactionSummary {
   savingsRate: number;
 }
 
+export interface MonthlyBreakdown {
+  categories: { category: string; total: number }[];
+  paymentMethods: { method: string; total: number }[];
+  topCategories: { category: string; total: number }[];
+}
+
+export interface CategoryTrend {
+  category: string;
+  months: { month: string; total: number }[];
+}
+
+export interface SavingsRateMonth {
+  month: string;
+  income: number;
+  expenses: number;
+  familyTransfers: number;
+  realSavings: number;
+  savingsRate: number;
+}
+
+export interface MoneyOutside {
+  borrowsOutstanding: number;
+  splitsOwed: number;
+  grandTotal: number;
+}
+
+export interface Budget {
+  id: number;
+  category: string;
+  monthlyLimit: number;
+  month: string;
+  spent: number;
+  percentUsed: number;
+  overBudget: boolean;
+}
+
 export interface CreateTransactionDto {
   type: TransactionType;
   amount: number;

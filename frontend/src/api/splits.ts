@@ -14,3 +14,6 @@ export const getSplits = () =>
 
 export const setManualSplit = (personId: number, balance: number) =>
   client.post('/splits/manual', { personId, balance }).then(r => r.data);
+
+export const syncSplitwise = () =>
+  client.post<{ synced: number; total: number }>('/splits/sync').then(r => r.data);

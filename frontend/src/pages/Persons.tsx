@@ -1,28 +1,38 @@
 import { useEffect, useState } from 'react';
 import { getPersons, createPerson, deletePerson } from '../api/persons';
 import type { Person } from '../types';
+import FAB from '../components/FAB';
 
 export default function Persons() {
   const [persons, setPersons] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: '', type: 'FRIEND', phone: '' });
+  const [addError, setAddError] = useState('');
 
   const load = async () => {
     setLoading(true);
-    const p = await getPersons();
-    setPersons(p);
-    setLoading(false);
+    try {
+      const p = await getPersons();
+      setPersons(p);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, []);
 
   const handleAdd = async () => {
-    if (!form.name.trim()) return;
-    await createPerson({ name: form.name.trim(), type: form.type, phone: form.phone.trim() || undefined });
-    setShowAdd(false);
-    setForm({ name: '', type: 'FRIEND', phone: '' });
-    load();
+    if (!form.name.trim()) { setAddError('Name is required'); return; }
+    setAddError('');
+    try {
+      await createPerson({ name: form.name.trim(), type: form.type, phone: form.phone.trim() || undefined });
+      setShowAdd(false);
+      setForm({ name: '', type: 'FRIEND', phone: '' });
+      load();
+    } catch {
+      setAddError('Failed to save. Try again.');
+    }
   };
 
   const handleDelete = async (id: number, name: string) => {
@@ -70,10 +80,7 @@ export default function Persons() {
         </>
       )}
 
-      <button onClick={() => setShowAdd(true)}
-        className="fixed bottom-20 right-4 w-14 h-14 bg-gray-900 text-white rounded-full text-2xl shadow-lg flex items-center justify-center">
-        +
-      </button>
+      <FAB onClick={() => setShowAdd(true)} />
 
       {showAdd && (
         <div className="fixed inset-0 bg-black/50 z-30 flex items-end">
@@ -93,8 +100,9 @@ export default function Persons() {
             <input type="tel" placeholder="Phone (optional)" value={form.phone}
               onChange={e => setForm({ ...form, phone: e.target.value })}
               className="w-full border border-gray-200 rounded-xl p-3 text-sm" />
+            {addError && <p className="text-sm text-red-500">{addError}</p>}
             <div className="flex gap-2">
-              <button onClick={() => setShowAdd(false)} className="flex-1 py-3 border border-gray-200 rounded-xl text-sm">Cancel</button>
+              <button onClick={() => { setShowAdd(false); setAddError(''); }} className="flex-1 py-3 border border-gray-200 rounded-xl text-sm">Cancel</button>
               <button onClick={handleAdd} className="flex-1 py-3 bg-gray-900 text-white rounded-xl text-sm">Save</button>
             </div>
           </div>

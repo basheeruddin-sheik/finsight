@@ -35,3 +35,6 @@ export const settleBorrow = (id: number) =>
 
 export const getBorrowSummary = () =>
   client.get<BorrowSummary>('/borrows/summary').then(r => r.data);
+
+export const deleteBorrow = (id: number) =>
+  client.delete(`/borrows/${id}`).then(r => r.data);

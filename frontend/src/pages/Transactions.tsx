@@ -8,7 +8,8 @@ const FILTERS: { label: string; value: TransactionType | 'ALL' }[] = [
   { label: 'Expense', value: 'EXPENSE' },
   { label: 'Income', value: 'INCOME' },
   { label: 'Family', value: 'FAMILY_TRANSFER' },
-  { label: 'Borrow', value: 'BORROW_GIVEN' },
+  { label: 'Lent', value: 'BORROW_GIVEN' },
+  { label: 'Returns', value: 'BORROW_RECEIVED' },
 ];
 
 export default function Transactions() {
@@ -21,6 +22,7 @@ export default function Transactions() {
     setLoading(true);
     getTransactions(type ? { type } : undefined)
       .then(setTransactions)
+      .catch(() => {})
       .finally(() => setLoading(false));
   };
 
@@ -34,9 +36,13 @@ export default function Transactions() {
 
   const handleDelete = async (id: number) => {
     if (!confirm('Delete this transaction?')) return;
-    await deleteTransaction(id);
-    setSelectedId(null);
-    load(filter === 'ALL' ? undefined : filter);
+    try {
+      await deleteTransaction(id);
+      setSelectedId(null);
+      load(filter === 'ALL' ? undefined : filter);
+    } catch {
+      alert('Failed to delete. Try again.');
+    }
   };
 
   return (

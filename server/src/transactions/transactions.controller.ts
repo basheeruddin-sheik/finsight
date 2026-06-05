@@ -9,7 +9,8 @@ export class TransactionsController {
 
   @Get('summary')
   getSummary(@Query('month') month: string) {
-    return this.service.getSummary(month);
+    const m = month ?? new Date().toISOString().slice(0, 7);
+    return this.service.getSummary(m);
   }
 
   @Get()

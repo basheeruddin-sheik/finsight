@@ -29,34 +29,53 @@
 
 ## Tech Stack
 
+### Phase 1–4 (Local Development)
 | Layer     | Choice                  | Reason                                       |
 |-----------|-------------------------|----------------------------------------------|
 | Frontend  | React + Vite + Tailwind | Familiar, fast UI                            |
 | Backend   | NestJS                  | Familiar, structured                         |
 | Database  | SQLite via Prisma       | No Docker, single file, zero ops             |
-| ORM       | Prisma                  | Type-safe schema, easy migrations            |
 | API       | REST                    | Simple, no overhead                          |
 | Mobile    | PWA                     | Add to iPhone home screen, no App Store fee  |
-| Splitwise | REST API (free)         | Pull balances only, no write-back needed     |
+
+### Phase 5 (Production — No Laptop Needed)
+| Layer     | Choice                  | Reason                                              |
+|-----------|-------------------------|-----------------------------------------------------|
+| Frontend  | React + Vite + Tailwind | Same codebase                                       |
+| Hosting   | Vercel (free)           | Global CDN, instant deploys, iPhone accessible      |
+| Backend   | Google Apps Script      | Serverless, zero cost, runs as you, no maintenance  |
+| Database  | Google Sheets           | Editable directly, shareable, always accessible     |
+| API       | GAS Web App URL         | Single HTTPS endpoint, no CORS issues               |
+| Mobile    | PWA on Vercel           | Install on iPhone from Vercel URL                   |
 
 ---
 
 ## Project Structure
 
 ```
-personal-finance/
+finsight/
 ├── docs/
-│   ├── TRACKER.md      ← progress tracker (check this first when resuming)
-│   ├── SPEC.md         ← this file
-│   ├── DATA-MODELS.md  ← Prisma schema and model definitions
-│   ├── API.md          ← all REST endpoints
-│   ├── PHASE-1.md      ← Core Setup detail
-│   ├── PHASE-2.md      ← People & Money detail
-│   ├── PHASE-3.md      ← Insights & Budgets detail
-│   └── PHASE-4.md      ← Splitwise + PWA detail
-├── server/             ← NestJS backend (created in Phase 1)
-└── frontend/           ← React + Vite frontend (created in Phase 1)
+│   ├── TRACKER.md       ← progress tracker (check this first)
+│   ├── SPEC.md          ← this file
+│   ├── DATA-MODELS.md   ← schema / sheet structure
+│   ├── API.md           ← all endpoints (NestJS + GAS)
+│   ├── TEST_CASES.md    ← manual test cases for all screens
+│   ├── Code.gs          ← Google Apps Script (copy into GAS editor)
+│   ├── PHASE-1.md       ← Core Setup
+│   ├── PHASE-2.md       ← People & Money
+│   ├── PHASE-3.md       ← Insights & Budgets
+│   ├── PHASE-4.md       ← Splitwise + PWA
+│   └── PHASE-5.md       ← Google Apps Script + Vercel
+├── server/              ← NestJS backend (local dev only)
+└── frontend/            ← React + Vite (runs locally + deploys to Vercel)
 ```
+
+### How the API client works
+`frontend/src/api/client.ts` reads `VITE_API_URL` at build time:
+- **Not set / localhost** → calls `http://{hostname}:3000` (NestJS, local dev)
+- **Set to Apps Script URL** → translates REST calls to GAS query-param format automatically
+
+No API file changes needed when switching modes.
 
 ---
 

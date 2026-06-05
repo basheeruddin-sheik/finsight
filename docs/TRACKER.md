@@ -6,12 +6,13 @@
 
 ## Overall Status
 
-| Phase | Title               | Status      |
-|-------|---------------------|-------------|
-| 1     | Core Setup          | DONE        |
-| 2     | People & Money      | DONE        |
-| 3     | Insights & Budgets  | NOT STARTED |
-| 4     | Splitwise + PWA     | NOT STARTED |
+| Phase | Title                        | Status      |
+|-------|------------------------------|-------------|
+| 1     | Core Setup                   | DONE        |
+| 2     | People & Money               | DONE        |
+| 3     | Insights & Budgets           | DONE        |
+| 4     | Splitwise + PWA              | DONE        |
+| 5     | Google Apps Script + Vercel  | NOT STARTED |
 
 ---
 
@@ -55,13 +56,13 @@
 
 | #   | Task                                                    | Done |
 |-----|---------------------------------------------------------|------|
-| 3.1 | Monthly breakdown API                                   | [ ]  |
-| 3.2 | Category trend API (last 6 months)                      | [ ]  |
-| 3.3 | Savings rate trend API                                  | [ ]  |
-| 3.4 | Money outside API (borrows + unsettled splits)          | [ ]  |
-| 3.5 | Budgets API (CRUD)                                      | [ ]  |
-| 3.6 | Reports screen (breakdown, trends, money outside)       | [ ]  |
-| 3.7 | Budgets screen — limits, spent so far, % used, alerts   | [ ]  |
+| 3.1 | Monthly breakdown API                                   | [x]  |
+| 3.2 | Category trend API (last 6 months)                      | [x]  |
+| 3.3 | Savings rate trend API                                  | [x]  |
+| 3.4 | Money outside API (borrows + unsettled splits)          | [x]  |
+| 3.5 | Budgets API (CRUD)                                      | [x]  |
+| 3.6 | Reports screen (breakdown, trends, money outside)       | [x]  |
+| 3.7 | Budgets screen — limits, spent so far, % used, alerts   | [x]  |
 
 **Phase 3 done when:** You can see where your money went this month and whether you're over budget.
 
@@ -71,15 +72,37 @@
 
 | #   | Task                                                        | Done |
 |-----|-------------------------------------------------------------|------|
-| 4.1 | Add Splitwise API key to env config                         | [ ]  |
-| 4.2 | Splitwise sync API — pull friend balances                   | [ ]  |
-| 4.3 | Merge Splitwise balances with manual entries                | [ ]  |
-| 4.4 | Update Friends & Splits screen with synced data             | [ ]  |
-| 4.5 | Add PWA manifest (`manifest.json`)                          | [ ]  |
-| 4.6 | Add service worker for offline support                      | [ ]  |
+| 4.1 | Add Splitwise API key to env config                         | [x]  |
+| 4.2 | Splitwise sync API — pull friend balances                   | [x]  |
+| 4.3 | Merge Splitwise balances with manual entries                | [x]  |
+| 4.4 | Update Friends & Splits screen with synced data             | [x]  |
+| 4.5 | Add PWA manifest (`manifest.json`)                          | [x]  |
+| 4.6 | Add service worker for offline support                      | [x]  |
 | 4.7 | Test on iPhone — Add to Home Screen, verify it works        | [ ]  |
 
 **Phase 4 done when:** App is on your iPhone home screen and Splitwise balances sync with one tap.
+
+---
+
+## Phase 5 — Google Apps Script + Vercel
+
+> Goal: eliminate the laptop entirely. Data lives in Google Sheets, logic runs in Apps Script,
+> UI is hosted on Vercel. Open the app from iPhone anywhere with no servers to manage.
+
+| #   | Task                                                                  | Done |
+|-----|-----------------------------------------------------------------------|------|
+| 5.1 | Create Google Spreadsheet with all 6 sheet tabs                       | [ ]  |
+| 5.2 | Create Google Cloud project + enable Sheets API (not needed for GAS)  | [ ]  |
+| 5.3 | Open Apps Script editor, paste `Code.gs`, run `setupSheets()`        | [ ]  |
+| 5.4 | Deploy Apps Script as web app (anyone, execute as me) → copy URL     | [ ]  |
+| 5.5 | Update frontend `VITE_API_URL` to the Apps Script URL                 | [ ]  |
+| 5.6 | Update API client to route calls through Apps Script format           | [ ]  |
+| 5.7 | Test all flows locally with Apps Script URL                           | [ ]  |
+| 5.8 | Deploy frontend to Vercel, set `VITE_API_URL` env var in Vercel       | [ ]  |
+| 5.9 | Open on iPhone — verify all CRUD, borrows, budgets, reports work      | [ ]  |
+| 5.10| (Optional) Migrate existing SQLite data to the Google Sheet           | [ ]  |
+
+**Phase 5 done when:** App opens on iPhone from the Vercel URL, all data reads and writes go to Google Sheets, no laptop required.
 
 ---
 

@@ -10,19 +10,28 @@ export default function Home() {
   const [summary, setSummary] = useState<TransactionSummary | null>(null);
   const [recent, setRecent] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     Promise.all([getSummary(month), getTransactions()])
       .then(([s, txns]) => {
         setSummary(s);
         setRecent(txns.slice(0, 5));
+        setLoadError(false);
       })
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, []);
 
   const monthLabel = new Date().toLocaleString('en-IN', { month: 'long', year: 'numeric' });
 
-  if (loading) return <div className="flex items-center justify-center h-full text-gray-400">Loading...</div>;
+  if (loading) return <div className="flex items-center justify-center h-full text-gray-400 p-8">Loading...</div>;
+  if (loadError) return (
+    <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
+      <p className="text-gray-500 text-sm">Could not reach the server.</p>
+      <p className="text-gray-400 text-xs">Make sure the backend is running, then pull down to refresh.</p>
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-24">

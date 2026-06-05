@@ -1,21 +1,30 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const tabs = [
-  { path: '/',             label: 'Home',    icon: '🏠' },
-  { path: '/borrows',      label: 'Borrows', icon: '💸' },
-  { path: '/add',          label: 'Add',     icon: '＋', fab: true },
-  { path: '/splits',       label: 'Splits',  icon: '🤝' },
-  { path: '/people',       label: 'People',  icon: '👥' },
+  { path: '/',         label: 'Home',     icon: '🏠' },
+  { path: '/borrows',  label: 'Borrows',  icon: '💸' },
+  { path: '/add',      label: 'Add',      icon: '＋', fab: true },
+  { path: '/insights', label: 'Insights', icon: '📊' },
+  { path: '/people',   label: 'People',   icon: '👥' },
 ];
+
+const INSIGHTS_PATHS = ['/insights', '/reports', '/budgets'];
+const PEOPLE_PATHS   = ['/people', '/splits', '/family', '/persons'];
 
 export default function BottomNav() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
+  function isActive(tab: typeof tabs[number]) {
+    if (tab.path === '/insights') return INSIGHTS_PATHS.includes(pathname);
+    if (tab.path === '/people')   return PEOPLE_PATHS.includes(pathname);
+    return pathname === tab.path;
+  }
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around items-center py-2 z-20 max-w-md mx-auto">
       {tabs.map(tab => {
-        const active = pathname === tab.path;
+        const active = isActive(tab);
         return (
           <button
             key={tab.path}
