@@ -1,4 +1,30 @@
-export type TransactionType = 'INCOME' | 'EXPENSE' | 'FAMILY_TRANSFER' | 'BORROW_GIVEN' | 'BORROW_RECEIVED';
+export type TransactionType = string; // dynamic — driven by TypeConfig keys
+
+export type Behavior = 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'LEND' | 'RECEIVE_BACK';
+
+export interface TypeConfig {
+  key: string;
+  label: string;
+  icon: string;
+  color: string;
+  behavior: Behavior;
+  hasCategories: boolean;    // show category picker for this type
+  requiresPerson: boolean;   // person selection required
+  personType: 'FAMILY' | 'FRIEND' | 'ANY';
+  isBuiltin: boolean;
+}
+
+export interface CategoryConfig {
+  key: string;
+  label: string;
+  icon: string;
+  isBuiltin: boolean;
+}
+
+export interface AppConfig {
+  types: TypeConfig[];
+  categories: CategoryConfig[];
+}
 export type Category = 'FOOD_DINING' | 'GROCERIES' | 'SHOPPING' | 'FUEL_TRAVEL' | 'SUBSCRIPTIONS' | 'MEDICAL' | 'ENTERTAINMENT' | 'UTILITIES' | 'OTHER';
 export type PaymentMethod = 'GPAY' | 'PHONEPE' | 'PAYTM' | 'CASH' | 'CREDIT_CARD' | 'BANK_TRANSFER' | 'OTHER';
 
@@ -30,6 +56,7 @@ export interface TransactionSummary {
   borrowRecoveries: number;
   realSavings: number;
   savingsRate: number;
+  byType: Record<string, number>; // per-type totals for dynamic insights
 }
 
 export interface MonthlyBreakdown {

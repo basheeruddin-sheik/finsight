@@ -5,6 +5,7 @@ import { Transaction, TransactionDocument } from '../schemas/transaction.schema'
 import { Borrow, BorrowDocument } from '../schemas/borrow.schema';
 import { BorrowPayment, BorrowPaymentDocument } from '../schemas/borrow-payment.schema';
 import { SplitBalance, SplitBalanceDocument } from '../schemas/split-balance.schema';
+import { Config, ConfigDocument } from '../schemas/config.schema';
 
 function round(n: number) { return Math.round(n * 100) / 100; }
 
@@ -15,16 +16,29 @@ export class ReportsService {
     @InjectModel(Borrow.name)        private borrowModel: Model<BorrowDocument>,
     @InjectModel(BorrowPayment.name) private paymentModel: Model<BorrowPaymentDocument>,
     @InjectModel(SplitBalance.name)  private splitModel: Model<SplitBalanceDocument>,
+    @InjectModel(Config.name)        private configModel: Model<ConfigDocument>,
   ) {}
+
+  private async getBehaviorMap(): Promise<Map<string, string>> {
+    const types = await this.configModel.find({ configType: 'type' });
+    return new Map(types.map(t => [t.key, t.behavior]));
+  }
+
+  private async getExpenseTypeKeys(): Promise<string[]> {
+    const types = await this.configModel.find({ configType: 'type', behavior: 'EXPENSE' });
+    return types.map(t => t.key);
+  }
 
   async getMonthlyBreakdown(month: string) {
     const [year, mon] = month.split('-').map(Number);
     const from = new Date(year, mon - 1, 1);
     const to   = new Date(year, mon, 1);
-    const txns = await this.txnModel.find({ date: { $gte: from, $lt: to }, type: 'EXPENSE' });
+
+    const expenseKeys = await this.getExpenseTypeKeys();
+    const txns = await this.txnModel.find({ date: { $gte: from, $lt: to }, type: { $in: expenseKeys } });
 
     const byCategory: Record<string, number> = {};
-    const byPayment: Record<string, number> = {};
+    const byPayment:  Record<string, number> = {};
     for (const t of txns) {
       const cat = t.category ?? 'OTHER';
       byCategory[cat] = (byCategory[cat] ?? 0) + t.amount;
@@ -44,14 +58,14 @@ export class ReportsService {
   async getCategoryTrend(category: string) {
     const months: { month: string; total: number }[] = [];
     const now = new Date();
+    const expenseKeys = await this.getExpenseTypeKeys();
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const from = new Date(d.getFullYear(), d.getMonth(), 1);
       const to   = new Date(d.getFullYear(), d.getMonth() + 1, 1);
       const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const txns = await this.txnModel.find({ date: { $gte: from, $lt: to }, type: 'EXPENSE', category });
-      const total = txns.reduce((s, t) => s + t.amount, 0);
-      months.push({ month: label, total: round(total) });
+      const txns = await this.txnModel.find({ date: { $gte: from, $lt: to }, type: { $in: expenseKeys }, category });
+      months.push({ month: label, total: round(txns.reduce((s, t) => s + t.amount, 0)) });
     }
     return { category, months };
   }
@@ -59,6 +73,8 @@ export class ReportsService {
   async getSavingsRateTrend(monthsCount: number) {
     const result: any[] = [];
     const now = new Date();
+    const behaviorMap = await this.getBehaviorMap();
+
     for (let i = monthsCount - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const from = new Date(d.getFullYear(), d.getMonth(), 1);
@@ -66,19 +82,21 @@ export class ReportsService {
       const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const txns = await this.txnModel.find({ date: { $gte: from, $lt: to } });
 
-      let income = 0, expenses = 0, familyTransfers = 0, borrowsGiven = 0, borrowRecoveries = 0;
+      const totals: Record<string, number> = {};
       for (const t of txns) {
-        switch (t.type) {
-          case 'INCOME':           income           += t.amount; break;
-          case 'EXPENSE':          expenses         += t.amount; break;
-          case 'FAMILY_TRANSFER':  familyTransfers  += t.amount; break;
-          case 'BORROW_GIVEN':     borrowsGiven     += t.amount; break;
-          case 'BORROW_RECEIVED':  borrowRecoveries += t.amount; break;
-        }
+        const beh = behaviorMap.get(t.type) ?? 'EXPENSE';
+        totals[beh] = (totals[beh] ?? 0) + t.amount;
       }
-      const realSavings = income - expenses - familyTransfers + borrowRecoveries - borrowsGiven;
+
+      const income    = totals['INCOME']       ?? 0;
+      const expenses  = totals['EXPENSE']      ?? 0;
+      const transfers = totals['TRANSFER']     ?? 0;
+      const lent      = totals['LEND']         ?? 0;
+      const received  = totals['RECEIVE_BACK'] ?? 0;
+      const realSavings = income - expenses - transfers + received - lent;
       const savingsRate = income > 0 ? Math.round((realSavings / income) * 100) : 0;
-      result.push({ month: label, income: round(income), expenses: round(expenses), familyTransfers: round(familyTransfers), realSavings: round(realSavings), savingsRate });
+
+      result.push({ month: label, income: round(income), expenses: round(expenses), familyTransfers: round(transfers), realSavings: round(realSavings), savingsRate });
     }
     return result;
   }

@@ -25,6 +25,10 @@ export class PersonsService {
     return this.personModel.create(dto);
   }
 
+  async update(id: string, dto: Partial<CreatePersonDto>) {
+    return this.personModel.findByIdAndUpdate(id, dto, { new: true });
+  }
+
   async delete(id: string) {
     const oid = new Types.ObjectId(id);
     const [txCount, borrowCount] = await Promise.all([

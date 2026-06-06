@@ -7,5 +7,8 @@ export const getPersons = (type?: string) =>
 export const createPerson = (dto: { name: string; type: string; phone?: string }) =>
   client.post<Person>('/persons', dto).then(r => r.data);
 
+export const updatePerson = (id: string, dto: { name: string; type: string; phone?: string }) =>
+  client.put<Person>(`/persons/${id}`, dto).then(r => r.data);
+
 export const deletePerson = (id: string) =>
   client.delete(`/persons/${id}`).then(r => r.data);

@@ -33,6 +33,7 @@ interface ApiClient {
   get<T = any>(url: string, config?: AxiosRequestConfig): Promise<{ data: T }>;
   post<T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<{ data: T }>;
   put<T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<{ data: T }>;
+  patch<T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<{ data: T }>;
   delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<{ data: T }>;
 }
 
@@ -104,6 +105,7 @@ const gasClient: ApiClient = {
   get:    <T>(url: string, config?: AxiosRequestConfig)                     => gasRequest<T>('GET',    url, undefined, config?.params),
   post:   <T>(url: string, data?: unknown, config?: AxiosRequestConfig)     => gasRequest<T>('POST',   url, data,      config?.params),
   put:    <T>(url: string, data?: unknown, config?: AxiosRequestConfig)     => gasRequest<T>('PUT',    url, data,      config?.params),
+  patch:  <T>(url: string, data?: unknown, config?: AxiosRequestConfig)     => gasRequest<T>('PATCH',  url, data,      config?.params),
   delete: <T>(url: string, config?: AxiosRequestConfig)                     => gasRequest<T>('DELETE', url, undefined, config?.params),
 };
 
