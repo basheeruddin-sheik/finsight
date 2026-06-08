@@ -1,10 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import moment from 'moment';
 import { Transaction, TransactionDocument } from '../schemas/transaction.schema';
 import { Config, ConfigDocument } from '../schemas/config.schema';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
+
+// Epoch numbers in DB → ISO strings in API so the frontend stays unchanged.
+const toISO = (epoch: number | null | undefined) =>
+  epoch != null ? moment(epoch).toISOString() : null;
 
 function toRes(doc: any) {
   const t = doc.toJSON ? doc.toJSON() : doc;
@@ -15,13 +20,17 @@ function toRes(doc: any) {
     id: t.id ?? t._id?.toString(),
     type: t.type,
     amount: t.amount,
-    date: t.date,
+    date: toISO(t.date),
     category: t.category ?? null,
     paymentMethod: t.paymentMethod,
     personId: person ? person.id : (t.personId?.toString() ?? null),
     person,
     note: t.note ?? null,
-    createdAt: t.createdAt,
+    createdAt: toISO(t.createdAt),
+    borrowId: t.borrowId?.toString() ?? null,
+    interestExpected: t.interestExpected ?? 0,
+    settled: t.settled ?? false,
+    costBasis: t.costBasis ?? 0,
   };
 }
 
@@ -39,18 +48,23 @@ export class TransactionsService {
     if (filters.search)   where.note = { $regex: filters.search, $options: 'i' };
     if (filters.from || filters.to) {
       where.date = {};
-      if (filters.from) where.date.$gte = new Date(filters.from);
-      if (filters.to)   where.date.$lte = new Date(filters.to);
+      if (filters.from) where.date.$gte = moment(filters.from).startOf('day').valueOf();
+      if (filters.to)   where.date.$lte = moment(filters.to).endOf('day').valueOf();
     }
-    const docs = await this.model.find(where).populate('personId').sort({ date: -1 });
+    // date is stored day-only (midnight), so same-day rows tie on date —
+    // break the tie by createdAt so the most recently added shows first.
+    const docs = await this.model.find(where).populate('personId').sort({ date: -1, createdAt: -1 });
     return docs.map(toRes);
   }
 
   async create(dto: CreateTransactionDto) {
     const created = await this.model.create({
       ...dto,
-      date: new Date(dto.date),
+      date: moment.utc(dto.date, 'YYYY-MM-DD').valueOf(),  // UTC midnight epoch ms — consistent across timezones
       personId: dto.personId ? new Types.ObjectId(dto.personId) : undefined,
+      borrowId: dto.borrowId ? new Types.ObjectId(dto.borrowId) : undefined,
+      interestExpected: dto.interestExpected ?? 0,
+      costBasis: dto.costBasis ?? 0,
     });
     const doc = await this.model.findById(created._id).populate('personId');
     return toRes(doc!);
@@ -58,21 +72,23 @@ export class TransactionsService {
 
   async update(id: string, dto: UpdateTransactionDto) {
     const update: any = { ...dto };
-    if (dto.date)                    update.date = new Date(dto.date);
+    if (dto.date)                    update.date = moment.utc(dto.date, 'YYYY-MM-DD').valueOf();
     if (dto.personId !== undefined)  update.personId = dto.personId ? new Types.ObjectId(dto.personId) : null;
+    if (dto.borrowId !== undefined)  update.borrowId = dto.borrowId ? new Types.ObjectId(dto.borrowId) : null;
     const doc = await this.model.findByIdAndUpdate(id, update, { new: true }).populate('personId');
     return toRes(doc!);
   }
 
+  // Deleting a borrow (the lend txn) also removes its repayment/interest entries.
   async delete(id: string) {
+    await this.model.deleteMany({ borrowId: new Types.ObjectId(id) });
     await this.model.findByIdAndDelete(id);
     return { deleted: true };
   }
 
   async getSummary(month: string) {
-    const [year, mon] = month.split('-').map(Number);
-    const from = new Date(year, mon - 1, 1);
-    const to   = new Date(year, mon, 1);
+    const from = moment(month, 'YYYY-MM').startOf('month').valueOf();
+    const to   = moment(month, 'YYYY-MM').add(1, 'month').startOf('month').valueOf();
 
     const [txns, typeConfigs] = await Promise.all([
       this.model.find({ date: { $gte: from, $lt: to } }),
@@ -84,9 +100,11 @@ export class TransactionsService {
 
     // Accumulate by behavior
     const totals: Record<string, number> = {};
+    let costBasisReturned = 0;
     for (const t of txns) {
       const beh = behaviorMap.get(t.type) ?? 'EXPENSE';
       totals[beh] = (totals[beh] ?? 0) + t.amount;
+      if (beh === 'DIVEST') costBasisReturned += t.costBasis ?? 0;
     }
 
     const income      = totals['INCOME']       ?? 0;
@@ -94,22 +112,56 @@ export class TransactionsService {
     const transfers   = totals['TRANSFER']     ?? 0;
     const lent        = totals['LEND']         ?? 0;
     const received    = totals['RECEIVE_BACK'] ?? 0;
+    const invested    = totals['INVEST']       ?? 0;
+    const divested    = totals['DIVEST']       ?? 0;
 
-    const realSavings = income - expenses - transfers + received - lent;
+    const realSavings = income - expenses - transfers + received - lent - invested + divested;
     const savingsRate = income > 0 ? Math.round((realSavings / income) * 100) : 0;
 
     return {
       income,
       expenses,
-      familyTransfers: transfers,
-      borrowsGiven:    lent,
-      borrowRecoveries: received,
+      familyTransfers:   transfers,
+      borrowsGiven:      lent,
+      borrowRecoveries:  received,
+      investments:       invested,
+      investmentReturns: divested,
+      costBasisReturned,
       realSavings,
       savingsRate,
       // Per-type breakdown for detailed insights
       byType: Object.fromEntries(
         typeConfigs.map(t => [t.key, txns.filter(x => x.type === t.key).reduce((s, x) => s + x.amount, 0)])
       ),
+    };
+  }
+
+  // All-time totals — no date filter, just the user's full history.
+  async getTotals() {
+    const [txns, typeConfigs] = await Promise.all([
+      this.model.find({}),
+      this.configModel.find({ configType: 'type' }),
+    ]);
+    const behaviorMap = new Map(typeConfigs.map(t => [t.key, t.behavior]));
+    const acc: Record<string, number> = {};
+    let costReturned = 0;   // original invested amount returned via sells
+    for (const t of txns) {
+      const beh = behaviorMap.get(t.type) ?? 'EXPENSE';
+      acc[beh] = (acc[beh] ?? 0) + t.amount;
+      if (beh === 'DIVEST') costReturned += t.costBasis ?? 0;
+    }
+    const income   = acc['INCOME']       ?? 0;
+    const expenses = acc['EXPENSE']      ?? 0;
+    const transfer = acc['TRANSFER']     ?? 0;
+    const lent     = acc['LEND']         ?? 0;
+    const received = acc['RECEIVE_BACK'] ?? 0;
+    const invested = acc['INVEST']       ?? 0;
+    const divested = acc['DIVEST']       ?? 0;
+    return {
+      // Cash accumulated: returns add the full amount back (profit/loss included).
+      totalSavings:  Math.round(income - expenses - transfer + received - lent - invested + divested),
+      // Money still locked in investments at cost (original cost basis minus what's been sold).
+      totalInvested: Math.round(invested - costReturned),
     };
   }
 }

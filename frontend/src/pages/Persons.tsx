@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { getPersons, createPerson, deletePerson } from '../api/persons';
+import { getPersons, createPerson, archivePerson } from '../api/persons';
 import type { Person } from '../types';
 import { Spinner, EmptyState, BottomSheet, ConfirmModal } from '../components/ui';
+import { Users, User } from 'lucide-react';
 
 export default function Persons() {
   const [persons,  setPersons]  = useState<Person[]>([]);
@@ -28,9 +29,9 @@ export default function Persons() {
     } catch { setAddError('Failed to save. Try again.'); }
   };
 
-  const handleDelete = async (id: string) => {
-    try { await deletePerson(id); load(); }
-    catch (e: any) { alert(e.response?.data?.message ?? 'Cannot delete — linked records exist.'); }
+  const handleArchive = async (id: string) => {
+    try { await archivePerson(id); load(); }
+    catch (e: any) { alert(e.response?.data?.message ?? 'Failed to archive.'); }
   };
 
   const friends = persons.filter(p => p.type === 'FRIEND');
@@ -43,10 +44,10 @@ export default function Persons() {
       </div>
 
       {loading ? <Spinner /> : persons.length === 0 ? (
-        <EmptyState icon="👥" title="No people added" description="Add friends and family to track transfers and borrows"
+        <EmptyState icon={<Users size={32} />} title="No people added" description="Add friends and family to track transfers and borrows"
           action={
             <button onClick={() => setShowAdd(true)}
-              className="mt-2 px-5 py-2.5 bg-slate-900 text-white rounded-2xl text-sm font-semibold">
+              className="mt-2 px-5 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-semibold">
               Add Person
             </button>
           }
@@ -76,8 +77,8 @@ export default function Persons() {
                           {p.phone && <p className="text-xs text-slate-400 mt-0.5">{p.phone}</p>}
                         </div>
                         <button onClick={() => setConfirmDel({ id: p.id, name: p.name })}
-                          className="text-xs font-semibold text-rose-400 border border-rose-100 bg-rose-50 px-3 py-1.5 rounded-xl">
-                          Delete
+                          className="text-xs font-semibold text-amber-500 border border-amber-100 bg-amber-50 px-3 py-1.5 rounded-xl">
+                          Archive
                         </button>
                       </div>
                     </div>
@@ -90,7 +91,7 @@ export default function Persons() {
       )}
 
       <button onClick={() => setShowAdd(true)}
-        className="fixed bottom-24 right-4 w-14 h-14 bg-slate-900 text-white rounded-full shadow-lg flex items-center justify-center text-2xl z-20">
+        className="fixed bottom-24 right-4 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center text-2xl z-20">
         +
       </button>
 
@@ -106,10 +107,10 @@ export default function Persons() {
           <div>
             <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Type</p>
             <div className="flex gap-2">
-              {[{ key: 'FRIEND', label: '👤 Friend' }, { key: 'FAMILY', label: '👨‍👩‍👦 Family' }].map(t => (
+              {[{ key: 'FRIEND', label: 'Friend', Icon: User }, { key: 'FAMILY', label: 'Family', Icon: Users }].map(t => (
                 <button key={t.key} onClick={() => setForm({ ...form, type: t.key })}
-                  className={`flex-1 py-2.5 rounded-2xl text-sm font-semibold border transition-all ${form.type === t.key ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}>
-                  {t.label}
+                  className={`flex-1 py-2.5 rounded-2xl text-sm font-semibold border transition-all flex items-center justify-center gap-1.5 ${form.type === t.key ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                  <t.Icon size={16} strokeWidth={2} /> {t.label}
                 </button>
               ))}
             </div>
@@ -128,17 +129,18 @@ export default function Persons() {
             <button onClick={() => { setShowAdd(false); setAddError(''); }}
               className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-600">Cancel</button>
             <button onClick={handleAdd}
-              className="flex-1 py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-semibold">Save</button>
+              className="flex-1 py-3.5 bg-indigo-600 text-white rounded-2xl text-sm font-semibold">Save</button>
           </div>
         </BottomSheet>
       )}
 
       {confirmDel && (
         <ConfirmModal
-          title={`Delete "${confirmDel.name}"?`}
-          message="This will fail if they have linked transactions or borrows."
-          confirmLabel="Delete"
-          onConfirm={() => { const { id } = confirmDel; setConfirmDel(null); handleDelete(id); }}
+          title={`Archive "${confirmDel.name}"?`}
+          message="They'll be hidden from your lists. Transactions and borrows stay intact, and you can reactivate them from Settings → People."
+          confirmLabel="Archive"
+          variant="confirm"
+          onConfirm={() => { const { id } = confirmDel; setConfirmDel(null); handleArchive(id); }}
           onCancel={() => setConfirmDel(null)}
         />
       )}

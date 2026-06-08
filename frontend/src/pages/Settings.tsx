@@ -1,9 +1,15 @@
 import { useState, useEffect } from 'react';
-import { updateType, updateCategory, addCategory, deleteCategory, addType, deleteType } from '../api/config';
-import { getPersons, createPerson, updatePerson, deletePerson } from '../api/persons';
+import { useNavigate } from 'react-router-dom';
+import { getTransactions } from '../api/transactions';
+import { updateType, updateCategory, addCategory, addType, archiveType, restoreType, archiveCategory, restoreCategory } from '../api/config';
+import { getPersons, createPerson, updatePerson, archivePerson, restorePerson } from '../api/persons';
 import { useConfig } from '../context/ConfigContext';
+import { useTheme } from '../context/ThemeContext';
 import type { Behavior, TypeConfig, CategoryConfig, Person } from '../types';
 import { ConfirmModal } from '../components/ui';
+import { ConfigIcon, IconBadge, getIconColor, CONFIG_ICON_GROUPS } from '../components/configIcons';
+import { X, ChevronDown, User, Users, Plus, Pencil, Trash2, Archive, RotateCcw, Sun, Moon, LogOut, PiggyBank, ChevronRight, type LucideIcon } from 'lucide-react';
+import { useAuth0 } from '@auth0/auth0-react';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -13,20 +19,6 @@ const BEHAVIORS: { key: Behavior; label: string; badge: string }[] = [
   { key: 'TRANSFER',     label: 'Transfer',     badge: 'bg-blue-100 text-blue-700 border-blue-200'          },
   { key: 'LEND',         label: 'Lend',         badge: 'bg-amber-100 text-amber-700 border-amber-200'       },
   { key: 'RECEIVE_BACK', label: 'Receive Back', badge: 'bg-violet-100 text-violet-700 border-violet-200'    },
-];
-
-const ICON_GROUPS = [
-  { label: 'Finance',       icons: ['💰','💸','💵','💴','💹','📈','📉','🏦','💳','🪙','💎','🧾','🏧','📊'] },
-  { label: 'Food & Drinks', icons: ['🍜','🍕','🍔','🥗','🍱','☕','🍷','🥤','🍚','🌮','🥘','🍣','🍗','🧁'] },
-  { label: 'Shopping',      icons: ['🛍️','👗','👟','💻','📱','⌚','📷','🎒','👜','🛒','🧴','👒','🕶️','🎽'] },
-  { label: 'Transport',     icons: ['🚗','⛽','🚌','✈️','🛵','🚂','🚢','🏍️','🚕','🛺','🚲','⚓','🚁','🛸'] },
-  { label: 'Health',        icons: ['💊','🏥','🧴','💪','🦷','🩺','🏋️','🧘','🩹','🧬','🌡️','❤️','🫀','🧠'] },
-  { label: 'Home & Bills',  icons: ['🏠','💡','🔧','🛋️','🛁','🪴','🏗️','🪣','🔌','📦','🧹','🛏️','🚿','🪞'] },
-  { label: 'Entertainment', icons: ['🎬','🎮','🎵','🎭','📺','🎯','🎪','🎲','🎸','🏟️','🎰','🎠','🎡','🎢'] },
-  { label: 'Education',     icons: ['📚','🎓','✏️','📝','🖥️','🔬','🧪','📐','🖊️','📖','🗂️','📓','🏫','📡'] },
-  { label: 'Work',          icons: ['💼','📋','📌','🖨️','📎','🗃️','🏢','🤝','📧','🗓️','🖱️','⌨️','📟','📠'] },
-  { label: 'Personal',      icons: ['🎁','💈','🐾','🌿','🌍','🧸','🌸','✨','🌟','⚙️','🎈','🪄','🧿','🪬'] },
-  { label: 'People',        icons: ['👤','👥','👨‍👩‍👦','🤝','📥','📤','👶','👴','👩‍⚕️','👨‍💼','🧑‍🎓','👩‍🍳','🧑‍🔧','🧑‍🎨'] },
 ];
 
 function getBadge(b: string) { return BEHAVIORS.find(x => x.key === b)?.badge ?? 'bg-slate-100 text-slate-500 border-slate-200'; }
@@ -40,22 +32,22 @@ function IconPicker({ value, onChange }: { value: string; onChange: (v: string) 
     <div>
       <button type="button" onClick={() => setOpen(o => !o)}
         className="w-full flex items-center gap-2.5 active:opacity-70">
-        <span className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-lg shrink-0">{value}</span>
+        <IconBadge name={value} size={18} className="w-8 h-8 rounded-lg" />
         <span className="flex-1 text-left text-sm text-slate-600">{open ? 'Choose icon' : 'Change icon'}</span>
-        <span className={`text-slate-400 text-[9px] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
+        <ChevronDown className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} size={16} />
       </button>
       {open && (
         <div className="mt-2 bg-slate-50 rounded-xl border border-slate-100 p-2.5 flex flex-col gap-2.5">
-          {ICON_GROUPS.map(g => (
+          {CONFIG_ICON_GROUPS.map(g => (
             <div key={g.label}>
               <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-1 px-0.5">{g.label}</p>
               <div className="grid grid-cols-8 gap-1">
-                {g.icons.map(icon => (
-                  <button key={icon} type="button" onClick={() => { onChange(icon); setOpen(false); }}
-                    className={`h-8 rounded-lg text-base flex items-center justify-center transition-all ${
-                      value === icon ? 'bg-indigo-500' : 'bg-white active:bg-slate-200'
+                {g.icons.map(name => (
+                  <button key={name} type="button" onClick={() => { onChange(name); setOpen(false); }}
+                    className={`h-8 rounded-lg flex items-center justify-center transition-all ${
+                      value === name ? 'bg-indigo-500' : 'bg-white active:bg-slate-200'
                     }`}>
-                    {icon}
+                    <ConfigIcon name={name} size={17} className={value === name ? 'text-white' : getIconColor(name).text} />
                   </button>
                 ))}
               </div>
@@ -86,8 +78,8 @@ function Sheet({ title, onClose, children }: {
         <div className="flex items-center justify-between px-4 py-2.5 shrink-0 border-b border-slate-100">
           <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
           <button onClick={onClose}
-            className="w-6 h-6 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-[10px] font-bold active:bg-slate-200">
-            ✕
+            className="w-6 h-6 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center active:bg-slate-200">
+            <X size={14} strokeWidth={2.5} />
           </button>
         </div>
         {/* calc() caps the scroll area; short content = small sheet */}
@@ -134,15 +126,16 @@ function InlineInput({ value, onChange, placeholder, type = 'text' }: {
 }
 
 function CompactSegment({ options, value, onChange }: {
-  options: { v: string; l: string }[]; value: string; onChange: (v: string) => void;
+  options: { v: string; l: string; Icon?: LucideIcon }[]; value: string; onChange: (v: string) => void;
 }) {
   return (
     <div className="flex gap-1.5">
       {options.map(o => (
         <button key={o.v} type="button" onClick={() => onChange(o.v)}
-          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-            value === o.v ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 text-slate-500 border-slate-200'
+          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 ${
+            value === o.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-500 border-slate-200'
           }`}>
+          {o.Icon && <o.Icon size={14} strokeWidth={2} />}
           {o.l}
         </button>
       ))}
@@ -175,7 +168,7 @@ function SaveBtn({ label, saving, disabled, onClick }: {
 }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled || saving}
-      className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-sm font-semibold disabled:opacity-40 active:opacity-80">
+      className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold disabled:opacity-40 active:opacity-80">
       {saving ? 'Saving…' : label}
     </button>
   );
@@ -188,7 +181,7 @@ function PersonSheet({ person, onClose, onSaved }: {
   onSaved: (d: { name: string; type: string; phone: string }) => Promise<void>;
 }) {
   const [name,   setName]   = useState(person?.name  ?? '');
-  const [type,   setType]   = useState(person?.type  ?? 'FRIEND');
+  const [type,   setType]   = useState<string>(person?.type  ?? 'FRIEND');
   const [phone,  setPhone]  = useState(person?.phone ?? '');
   const [saving, setSaving] = useState(false);
 
@@ -208,7 +201,7 @@ function PersonSheet({ person, onClose, onSaved }: {
         </GroupRow>
         <GroupRow label="Type">
           <CompactSegment
-            options={[{ v: 'FRIEND', l: '👤 Friend' }, { v: 'FAMILY', l: '👨‍👩‍👦 Family' }]}
+            options={[{ v: 'FRIEND', l: 'Friend', Icon: User }, { v: 'FAMILY', l: 'Family', Icon: Users }]}
             value={type} onChange={setType}
           />
         </GroupRow>
@@ -239,12 +232,14 @@ function TypeSheet({ type, onClose, onSaved }: {
   onSaved: (d: { key?: string; label: string; icon: string; behavior: string; hasCategories: boolean; requiresPerson: boolean; personType: string }) => Promise<void>;
 }) {
   const [label,         setLabel]         = useState(type?.label         ?? '');
-  const [icon,          setIcon]          = useState(type?.icon          ?? '💸');
+  const [icon,          setIcon]          = useState(type?.icon          ?? 'wallet');
   const [behavior,      setBehavior]      = useState<Behavior>(type?.behavior ?? 'EXPENSE');
   const [hasCategories, setHasCategories] = useState(type?.hasCategories ?? false);
   const [reqPerson,     setReqPerson]     = useState(type?.requiresPerson ?? false);
-  const [personType,    setPersonType]    = useState(type?.personType    ?? 'ANY');
+  const [personType,    setPersonType]    = useState<string>(type?.personType    ?? 'ANY');
   const [saving,        setSaving]        = useState(false);
+
+  const isBuiltin = type?.isBuiltin ?? false;
 
   const save = async () => {
     if (!label.trim()) return;
@@ -256,55 +251,64 @@ function TypeSheet({ type, onClose, onSaved }: {
   };
 
   return (
-    <Sheet title={type ? 'Edit Type' : 'New Transaction Type'} onClose={onClose}>
+    <Sheet title={type ? (isBuiltin ? `Edit "${type.label}"` : 'Edit Type') : 'New Transaction Type'} onClose={onClose}>
 
-      {/* Icon — standalone so overflow-hidden on GroupCard never clips the picker */}
+      {/* Icon — always editable */}
       <Section label="Icon">
         <div className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white">
           <IconPicker value={icon} onChange={setIcon} />
         </div>
       </Section>
 
-      {/* Display Name */}
-      <Section label="Display Name">
-        <div className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white">
-          <InlineInput value={label} onChange={setLabel} placeholder={type ? '' : 'e.g. Salary, Rent'} />
-        </div>
-      </Section>
-
-      {/* Behavior */}
-      <Section label="Behavior">
-        <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100 overflow-hidden">
-          {BEHAVIORS.map(b => (
-            <button key={b.key} type="button" onClick={() => setBehavior(b.key)}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 transition-colors ${behavior === b.key ? 'bg-indigo-50' : 'active:bg-slate-50'}`}>
-              <div className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
-                behavior === b.key ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300'
-              }`}>
-                {behavior === b.key && <div className="w-1 h-1 rounded-full bg-white" />}
-              </div>
-              <span className="flex-1 text-left text-sm font-medium text-slate-800">{b.label}</span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${b.badge}`}>{b.label}</span>
-            </button>
-          ))}
-        </div>
-      </Section>
-
-      {/* Options */}
-      <Section label="Options">
-        <div className="rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
-          <Toggle label="Show category picker" desc="For expense-like types" checked={hasCategories} onChange={setHasCategories} />
-          <Toggle label="Requires a person" checked={reqPerson} onChange={setReqPerson} />
-          {reqPerson && (
-            <div className="px-3.5 py-2">
-              <CompactSegment
-                options={[{ v: 'ANY', l: '👥 Any person' }, { v: 'FAMILY', l: '👨‍👩‍👦 Family only' }]}
-                value={personType} onChange={setPersonType}
-              />
+      {isBuiltin ? (
+        <p className="text-xs text-slate-400 leading-relaxed px-0.5">
+          This is a <span className="font-semibold text-slate-500">built-in</span> type. Only its icon can be changed —
+          its name, behavior and options are fixed so your reports stay consistent.
+        </p>
+      ) : (
+        <>
+          {/* Display Name */}
+          <Section label="Display Name">
+            <div className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white">
+              <InlineInput value={label} onChange={setLabel} placeholder={type ? '' : 'e.g. Salary, Rent'} />
             </div>
-          )}
-        </div>
-      </Section>
+          </Section>
+
+          {/* Behavior */}
+          <Section label="Behavior">
+            <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100 overflow-hidden">
+              {BEHAVIORS.map(b => (
+                <button key={b.key} type="button" onClick={() => setBehavior(b.key)}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 transition-colors ${behavior === b.key ? 'bg-indigo-50' : 'active:bg-slate-50'}`}>
+                  <div className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
+                    behavior === b.key ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300'
+                  }`}>
+                    {behavior === b.key && <div className="w-1 h-1 rounded-full bg-white" />}
+                  </div>
+                  <span className="flex-1 text-left text-sm font-medium text-slate-800">{b.label}</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${b.badge}`}>{b.label}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          {/* Options */}
+          <Section label="Options">
+            <div className="rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
+              <Toggle label="Show category picker" desc="For expense-like types" checked={hasCategories} onChange={setHasCategories} />
+              <Toggle label="Requires a person" checked={reqPerson} onChange={setReqPerson} />
+              {reqPerson && (
+                <div className="px-3.5 py-2">
+                  <CompactSegment
+                    options={[{ v: 'ANY', l: 'Any person', Icon: Users }, { v: 'FAMILY', l: 'Family only', Icon: Users }]}
+                    value={personType} onChange={setPersonType}
+                  />
+                </div>
+              )}
+            </div>
+          </Section>
+        </>
+      )}
 
       <SaveBtn label={type ? 'Save Changes' : 'Add Type'} saving={saving} disabled={!label.trim()} onClick={save} />
     </Sheet>
@@ -318,7 +322,7 @@ function CategorySheet({ cat, onClose, onSaved }: {
   onSaved: (d: { key?: string; label: string; icon: string }) => Promise<void>;
 }) {
   const [label,  setLabel]  = useState(cat?.label ?? '');
-  const [icon,   setIcon]   = useState(cat?.icon  ?? '📌');
+  const [icon,   setIcon]   = useState(cat?.icon  ?? 'tag');
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
@@ -330,18 +334,26 @@ function CategorySheet({ cat, onClose, onSaved }: {
     onClose();
   };
 
+  const isBuiltin = cat?.isBuiltin ?? false;
+
   return (
-    <Sheet title={cat ? 'Edit Category' : 'New Category'} onClose={onClose}>
+    <Sheet title={cat ? (isBuiltin ? `Edit "${cat.label}"` : 'Edit Category') : 'New Category'} onClose={onClose}>
       <Section label="Icon">
         <div className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white">
           <IconPicker value={icon} onChange={setIcon} />
         </div>
       </Section>
-      <Section label="Name">
-        <div className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white">
-          <InlineInput value={label} onChange={setLabel} placeholder={cat ? '' : 'e.g. EMI, Rent, Insurance'} />
-        </div>
-      </Section>
+      {isBuiltin ? (
+        <p className="text-xs text-slate-400 leading-relaxed px-0.5">
+          This is a <span className="font-semibold text-slate-500">built-in</span> category. Only its icon can be changed.
+        </p>
+      ) : (
+        <Section label="Name">
+          <div className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white">
+            <InlineInput value={label} onChange={setLabel} placeholder={cat ? '' : 'e.g. EMI, Rent, Insurance'} />
+          </div>
+        </Section>
+      )}
       <SaveBtn label={cat ? 'Save Changes' : 'Add Category'} saving={saving} disabled={!label.trim()} onClick={save} />
     </Sheet>
   );
@@ -355,8 +367,8 @@ function SectionHeader({ label, hint, onAdd }: { label: string; hint?: string; o
       <div className="flex items-center justify-between px-1 mb-1">
         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{label}</p>
         <button onClick={onAdd}
-          className="text-xs font-semibold text-indigo-600 px-3 py-1 bg-indigo-50 rounded-xl border border-indigo-100 active:opacity-70">
-          + Add
+          className="flex items-center gap-1 text-xs font-semibold text-indigo-600 pl-2 pr-3 py-1 bg-indigo-50 rounded-xl border border-indigo-100 active:opacity-70">
+          <Plus size={14} strokeWidth={2.5} /> Add
         </button>
       </div>
       {hint && <p className="text-[11px] text-slate-400 px-1 leading-relaxed">{hint}</p>}
@@ -366,10 +378,10 @@ function SectionHeader({ label, hint, onAdd }: { label: string; hint?: string; o
 
 // ── List row ─────────────────────────────────────────────────────────────────
 
-function ListRow({ icon, title, subtitle, badge, badgeStyle, onEdit, onDelete }: {
+function ListRow({ icon, title, subtitle, badge, badgeStyle, onEdit, onDelete, onArchive }: {
   icon: React.ReactNode; title: string; subtitle?: React.ReactNode;
   badge?: string; badgeStyle?: string;
-  onEdit: () => void; onDelete?: () => void;
+  onEdit: () => void; onDelete?: () => void; onArchive?: () => void;
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3">
@@ -384,25 +396,58 @@ function ListRow({ icon, title, subtitle, badge, badgeStyle, onEdit, onDelete }:
         {badge && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${badgeStyle}`}>{badge}</span>}
         <button onClick={onEdit}
           className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 active:bg-slate-200">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-          </svg>
+          <Pencil size={14} strokeWidth={2} />
         </button>
-        {onDelete ? (
+        {onArchive ? (
+          <button onClick={onArchive} title="Archive"
+            className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500 active:bg-amber-100">
+            <Archive size={14} strokeWidth={2} />
+          </button>
+        ) : onDelete ? (
           <button onClick={onDelete}
             className="w-8 h-8 rounded-xl bg-rose-50 flex items-center justify-center text-rose-400 active:bg-rose-100">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-              <path d="M10 11v6M14 11v6"/>
-              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-            </svg>
+            <Trash2 size={14} strokeWidth={2} />
           </button>
         ) : (
           <div className="w-8" />
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Archived block (collapsible; Activate-only) ───────────────────────────────
+
+function ArchivedBlock({ count, open, onToggle, items }: {
+  count: number; open: boolean; onToggle: () => void;
+  items: { key: string; icon: string; label: string; sub: string; onRestore: () => void }[];
+}) {
+  return (
+    <div className="mt-3">
+      <button onClick={onToggle}
+        className="w-full flex items-center justify-between px-1 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+        <span className="flex items-center gap-1.5"><Archive size={12} strokeWidth={2.5} /> Archived · {count}</span>
+        <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mt-1">
+          {items.map((it, i) => (
+            <div key={it.key} className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? 'border-t border-slate-50' : ''}`}>
+              <span className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                <ConfigIcon name={it.icon} size={18} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-500 truncate">{it.label}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">{it.sub}</p>
+              </div>
+              <button onClick={it.onRestore}
+                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 px-3 py-1.5 bg-indigo-50 rounded-xl border border-indigo-100 active:opacity-70 shrink-0">
+                <RotateCcw size={13} strokeWidth={2} /> Activate
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -417,26 +462,54 @@ type ActiveSheet =
   | { kind: 'addCat' }
   | { kind: 'editCat'; cat: CategoryConfig };
 
-type Confirm = { title: string; message: string; onConfirm: () => void };
+type Confirm = { title: string; message: string; onConfirm: () => void; confirmLabel?: string; variant?: 'danger' | 'confirm' };
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { config, reload } = useConfig();
+  const { theme, setTheme } = useTheme();
+  const { user, logout } = useAuth0();
 
-  const [persons, setPersons] = useState<Person[]>([]);
-  const [sheet,   setSheet]   = useState<ActiveSheet | null>(null);
-  const [confirm, setConfirm] = useState<Confirm | null>(null);
-  const [error,   setError]   = useState('');
+  const [persons,  setPersons]  = useState<Person[]>([]);
+  const [archived, setArchived] = useState<Person[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [showArchTypes, setShowArchTypes] = useState(false);
+  const [showArchCats,  setShowArchCats]  = useState(false);
+  const [sheet,    setSheet]    = useState<ActiveSheet | null>(null);
+  const [confirm,  setConfirm]  = useState<Confirm | null>(null);
+  const [error,    setError]    = useState('');
+
+  // Opening balance summary
+  const [obSavings,   setObSavings]   = useState(0);
+  const [obInvCount,  setObInvCount]  = useState(0);
+  const [obLentCount, setObLentCount] = useState(0);
 
   const loadPersons = async () => {
-    try { setPersons(await getPersons()); } catch { /* silent */ }
+    try {
+      const [active, arch] = await Promise.all([getPersons(), getPersons(undefined, true)]);
+      setPersons(active); setArchived(arch);
+    } catch { /* silent */ }
   };
 
-  useEffect(() => { loadPersons(); }, []);
+  const loadOpeningBalances = async () => {
+    try {
+      const [obTxns, invTxns, lentTxns] = await Promise.all([
+        getTransactions({ type: 'OPENING_BALANCE' }),
+        getTransactions({ type: 'INVESTMENT',   search: 'Opening balance' }),
+        getTransactions({ type: 'BORROW_GIVEN', search: 'Opening balance' }),
+      ]);
+      setObSavings(obTxns.reduce((s, t) => s + t.amount, 0));
+      setObInvCount(invTxns.length);
+      setObLentCount(lentTxns.length);
+    } catch { /* silent */ }
+  };
+
+  useEffect(() => { loadPersons(); loadOpeningBalances(); }, []);
 
   const close   = () => setSheet(null);
   const showErr = (msg: string) => setError(msg);
-  const askDelete = (title: string, message: string, onConfirm: () => void) =>
-    setConfirm({ title, message, onConfirm });
+  const askDelete = (title: string, message: string, onConfirm: () => void, extra?: { confirmLabel?: string; variant?: 'danger' | 'confirm' }) =>
+    setConfirm({ title, message, onConfirm, ...extra });
 
   const handleSavePerson = async (data: { name: string; type: string; phone: string }) => {
     try {
@@ -449,12 +522,17 @@ export default function Settings() {
     } catch (e: any) { showErr(e?.response?.data?.message ?? 'Failed to save person'); }
   };
 
-  const handleDeletePerson = (p: Person) =>
-    askDelete('Delete Person', `Remove "${p.name}"? This fails if they have linked transactions.`, async () => {
+  const handleArchivePerson = (p: Person) =>
+    askDelete('Archive Person', `Hide "${p.name}" from your lists? Their transactions and borrows stay intact, and you can reactivate them anytime from Archived.`, async () => {
       setConfirm(null);
-      try { await deletePerson(p.id); await loadPersons(); }
-      catch (e: any) { showErr(e?.response?.data?.message ?? 'Cannot delete — linked records exist'); }
-    });
+      try { await archivePerson(p.id); await loadPersons(); }
+      catch (e: any) { showErr(e?.response?.data?.message ?? 'Failed to archive'); }
+    }, { confirmLabel: 'Archive', variant: 'confirm' });
+
+  const handleRestorePerson = async (p: Person) => {
+    try { await restorePerson(p.id); await loadPersons(); }
+    catch (e: any) { showErr(e?.response?.data?.message ?? 'Failed to reactivate'); }
+  };
 
   const handleSaveType = async (data: { key?: string; label: string; icon: string; behavior: string; hasCategories: boolean; requiresPerson: boolean; personType: string }) => {
     try {
@@ -467,12 +545,17 @@ export default function Settings() {
     } catch (e: any) { showErr(e?.response?.data?.message ?? 'Failed to save type'); }
   };
 
-  const handleDeleteType = (t: TypeConfig) =>
-    askDelete('Delete Type', `Remove "${t.label}"? Existing transactions keep this key.`, async () => {
+  const handleArchiveType = (t: TypeConfig) =>
+    askDelete('Archive Type', `Hide "${t.label}" from the Add screen and filters? Existing transactions keep it, and you can reactivate anytime from Archived.`, async () => {
       setConfirm(null);
-      try { await deleteType(t.key); await reload(); }
-      catch (e: any) { showErr(e?.response?.data?.message ?? 'Cannot delete type'); }
-    });
+      try { await archiveType(t.key); await reload(); }
+      catch (e: any) { showErr(e?.response?.data?.message ?? 'Failed to archive type'); }
+    }, { confirmLabel: 'Archive', variant: 'confirm' });
+
+  const handleRestoreType = async (t: TypeConfig) => {
+    try { await restoreType(t.key); await reload(); }
+    catch (e: any) { showErr(e?.response?.data?.message ?? 'Failed to reactivate'); }
+  };
 
   const handleSaveCat = async (data: { key?: string; label: string; icon: string }) => {
     try {
@@ -485,15 +568,25 @@ export default function Settings() {
     } catch (e: any) { showErr(e?.response?.data?.message ?? 'Failed to save category'); }
   };
 
-  const handleDeleteCat = (c: CategoryConfig) =>
-    askDelete('Delete Category', `Remove "${c.label}"? This cannot be undone.`, async () => {
+  const handleArchiveCat = (c: CategoryConfig) =>
+    askDelete('Archive Category', `Hide "${c.label}" from pickers? Existing transactions keep it, and you can reactivate anytime from Archived.`, async () => {
       setConfirm(null);
-      try { await deleteCategory(c.key); await reload(); }
-      catch (e: any) { showErr(e?.response?.data?.message ?? 'Failed to delete'); }
-    });
+      try { await archiveCategory(c.key); await reload(); }
+      catch (e: any) { showErr(e?.response?.data?.message ?? 'Failed to archive'); }
+    }, { confirmLabel: 'Archive', variant: 'confirm' });
+
+  const handleRestoreCat = async (c: CategoryConfig) => {
+    try { await restoreCategory(c.key); await reload(); }
+    catch (e: any) { showErr(e?.response?.data?.message ?? 'Failed to reactivate'); }
+  };
 
   const friends = persons.filter(p => p.type === 'FRIEND');
   const family  = persons.filter(p => p.type === 'FAMILY');
+
+  const activeTypeList = config.types.filter(t => !t.archived);
+  const archivedTypes  = config.types.filter(t => t.archived);
+  const activeCatList  = config.categories.filter(c => !c.archived);
+  const archivedCats   = config.categories.filter(c => c.archived);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28">
@@ -505,11 +598,85 @@ export default function Settings() {
       {error && (
         <div className="mx-4 mt-3 bg-rose-50 border border-rose-100 rounded-xl px-4 py-2.5 flex items-center justify-between">
           <p className="text-sm text-rose-600 font-medium">{error}</p>
-          <button onClick={() => setError('')} className="text-rose-400 font-bold text-sm ml-3">✕</button>
+          <button onClick={() => setError('')} className="text-rose-400 ml-3 shrink-0"><X size={16} strokeWidth={2.5} /></button>
         </div>
       )}
 
       <div className="p-4 flex flex-col gap-5">
+
+        {/* ── DATA ── */}
+        <section>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Data</p>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <button onClick={() => navigate('/setup')}
+              className="w-full p-4 flex items-center gap-3 text-left active:bg-slate-50">
+              <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
+                <PiggyBank className="text-indigo-500" size={18} strokeWidth={2} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-800">Opening balances</p>
+                {obSavings === 0 && obInvCount === 0 && obLentCount === 0 ? (
+                  <p className="text-xs text-slate-400">Add existing savings, investments &amp; loans</p>
+                ) : (
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    {obSavings > 0 && (
+                      <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                        ₹{(obSavings / 100000).toFixed(1)}L savings
+                      </span>
+                    )}
+                    {obInvCount > 0 && (
+                      <span className="text-[11px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                        {obInvCount} investment{obInvCount > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {obLentCount > 0 && (
+                      <span className="text-[11px] font-semibold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">
+                        {obLentCount} loan{obLentCount > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+              <ChevronRight className="text-slate-300 shrink-0" size={18} />
+            </button>
+          </div>
+        </section>
+
+        {/* ── ACCOUNT ── */}
+        <section>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Account</p>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+              <User className="text-indigo-600" size={18} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-slate-800 truncate">{user?.name || user?.email || 'Signed in'}</p>
+              {user?.email && <p className="text-xs text-slate-400 truncate">{user.email}</p>}
+            </div>
+            <button onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold active:bg-slate-50 shrink-0">
+              <LogOut size={14} /> Log out
+            </button>
+          </div>
+        </section>
+
+        {/* ── APPEARANCE ── */}
+        <section>
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Appearance</p>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-2 flex gap-2">
+            {([
+              { v: 'light', label: 'Light', Icon: Sun },
+              { v: 'dark',  label: 'Dark',  Icon: Moon },
+            ] as const).map(o => (
+              <button key={o.v} onClick={() => setTheme(o.v)}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                  theme === o.v ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-500'
+                }`}>
+                <o.Icon size={16} strokeWidth={2} /> {o.label}
+              </button>
+            ))}
+          </div>
+        </section>
 
         {/* ── PEOPLE ── */}
         <section>
@@ -541,7 +708,7 @@ export default function Settings() {
                           subtitle={p.phone ? <p className="text-xs text-slate-400">{p.phone}</p> : undefined}
                           badge={badge} badgeStyle={badgeStyle}
                           onEdit={() => setSheet({ kind: 'editPerson', person: p })}
-                          onDelete={() => handleDeletePerson(p)}
+                          onArchive={() => handleArchivePerson(p)}
                         />
                       </div>
                     ))}
@@ -550,61 +717,104 @@ export default function Settings() {
               ))}
             </div>
           )}
+
+          {/* Archived */}
+          {archived.length > 0 && (
+            <div className="mt-3">
+              <button onClick={() => setShowArchived(s => !s)}
+                className="w-full flex items-center justify-between px-1 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                <span className="flex items-center gap-1.5"><Archive size={12} strokeWidth={2.5} /> Archived · {archived.length}</span>
+                <ChevronDown size={14} className={`transition-transform ${showArchived ? 'rotate-180' : ''}`} />
+              </button>
+              {showArchived && (
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mt-1">
+                  {archived.map((p, i) => (
+                    <div key={p.id} className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? 'border-t border-slate-50' : ''}`}>
+                      <span className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center text-sm font-bold text-slate-400 shrink-0">
+                        {p.name[0].toUpperCase()}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-500 truncate">{p.name}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">{p.type === 'FAMILY' ? 'Family' : 'Friend'}</p>
+                      </div>
+                      <button onClick={() => handleRestorePerson(p)}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 px-3 py-1.5 bg-indigo-50 rounded-xl border border-indigo-100 active:opacity-70 shrink-0">
+                        <RotateCcw size={13} strokeWidth={2} /> Activate
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         {/* ── TRANSACTION TYPES ── */}
         <section>
           <SectionHeader
             label="Transaction Types"
-            hint="Controls how each transaction affects your savings. Built-in types cannot be deleted."
+            hint="Controls how each transaction affects your savings. Built-in types can only have their icon changed."
             onAdd={() => setSheet({ kind: 'addType' })}
           />
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            {config.types.map((t, i) => (
+            {activeTypeList.map((t, i) => (
               <div key={t.key}>
                 {i > 0 && <div className="h-px bg-slate-50 mx-4" />}
                 <ListRow
-                  icon={t.icon}
+                  icon={<IconBadge name={t.icon} size={20} className="w-full h-full" />}
                   title={t.label}
                   subtitle={
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getBadge(t.behavior)}`}>
-                        {getBehaviorLabel(t.behavior)}
-                      </span>
-                      {t.isBuiltin && <span className="text-[10px] text-slate-400">built-in</span>}
-                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border inline-block ${getBadge(t.behavior)}`}>
+                      {getBehaviorLabel(t.behavior)}
+                    </span>
                   }
+                  badge={t.isBuiltin ? 'Built-in' : 'Custom'}
+                  badgeStyle={t.isBuiltin ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-indigo-50 text-indigo-500 border-indigo-100'}
                   onEdit={() => setSheet({ kind: 'editType', type: t })}
-                  onDelete={!t.isBuiltin ? () => handleDeleteType(t) : undefined}
+                  onArchive={!t.isBuiltin ? () => handleArchiveType(t) : undefined}
                 />
               </div>
             ))}
           </div>
+
+          {archivedTypes.length > 0 && (
+            <ArchivedBlock
+              count={archivedTypes.length} open={showArchTypes} onToggle={() => setShowArchTypes(s => !s)}
+              items={archivedTypes.map(t => ({ key: t.key, icon: t.icon, label: t.label, sub: getBehaviorLabel(t.behavior), onRestore: () => handleRestoreType(t) }))}
+            />
+          )}
         </section>
 
         {/* ── EXPENSE CATEGORIES ── */}
         <section>
           <SectionHeader
             label="Expense Categories"
-            hint="Sub-categories for expenses. Built-in categories cannot be deleted."
+            hint="Sub-categories for expenses. Built-in categories can only have their icon changed."
             onAdd={() => setSheet({ kind: 'addCat' })}
           />
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            {config.categories.map((c, i) => (
+            {activeCatList.map((c, i) => (
               <div key={c.key}>
                 {i > 0 && <div className="h-px bg-slate-50 mx-4" />}
                 <ListRow
-                  icon={c.icon}
+                  icon={<IconBadge name={c.icon} size={20} className="w-full h-full" />}
                   title={c.label}
                   subtitle={<p className="text-[10px] text-slate-400 font-mono">{c.key}</p>}
-                  badge={!c.isBuiltin ? 'custom' : undefined}
-                  badgeStyle="bg-indigo-50 text-indigo-500 border-indigo-100"
+                  badge={c.isBuiltin ? 'Built-in' : 'Custom'}
+                  badgeStyle={c.isBuiltin ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-indigo-50 text-indigo-500 border-indigo-100'}
                   onEdit={() => setSheet({ kind: 'editCat', cat: c })}
-                  onDelete={!c.isBuiltin ? () => handleDeleteCat(c) : undefined}
+                  onArchive={!c.isBuiltin ? () => handleArchiveCat(c) : undefined}
                 />
               </div>
             ))}
           </div>
+
+          {archivedCats.length > 0 && (
+            <ArchivedBlock
+              count={archivedCats.length} open={showArchCats} onToggle={() => setShowArchCats(s => !s)}
+              items={archivedCats.map(c => ({ key: c.key, icon: c.icon, label: c.label, sub: 'Category', onRestore: () => handleRestoreCat(c) }))}
+            />
+          )}
         </section>
 
       </div>
@@ -630,6 +840,7 @@ export default function Settings() {
       {confirm && (
         <ConfirmModal
           title={confirm.title} message={confirm.message}
+          confirmLabel={confirm.confirmLabel} variant={confirm.variant}
           onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)}
         />
       )}

@@ -1,8 +1,8 @@
 import client from './client';
 
 export interface SplitBalance {
-  id: number;
-  personId: number;
+  id: string;
+  personId: string;
   name: string;
   balance: number;
   source: string;

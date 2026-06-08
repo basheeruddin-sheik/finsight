@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import moment from 'moment';
 import { Budget, BudgetDocument } from '../schemas/budget.schema';
 import { Transaction, TransactionDocument } from '../schemas/transaction.schema';
 import { CreateBudgetDto } from './dto/create-budget.dto';
@@ -16,9 +17,8 @@ export class BudgetsService {
   ) {}
 
   async findAll(month: string) {
-    const [year, mon] = month.split('-').map(Number);
-    const from = new Date(year, mon - 1, 1);
-    const to   = new Date(year, mon, 1);
+    const from = moment(month, 'YYYY-MM').startOf('month').valueOf();
+    const to   = moment(month, 'YYYY-MM').add(1, 'month').startOf('month').valueOf();
 
     const [budgets, txns] = await Promise.all([
       this.budgetModel.find({ month }),

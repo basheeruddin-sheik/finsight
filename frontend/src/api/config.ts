@@ -10,8 +10,11 @@ export const addType = (dto: {
   hasCategories: boolean; requiresPerson: boolean; personType: string;
 }) => client.post('/config/types', dto).then(r => r.data);
 
-export const deleteType = (key: string) =>
-  client.delete(`/config/types/${key}`).then(r => r.data);
+export const archiveType = (key: string) =>
+  client.put(`/config/types/${key}/archive`).then(r => r.data);
+
+export const restoreType = (key: string) =>
+  client.put(`/config/types/${key}/restore`).then(r => r.data);
 
 export const updateType = (key: string, dto: {
   label?: string; icon?: string; behavior?: string;
@@ -22,8 +25,11 @@ export const updateType = (key: string, dto: {
 export const addCategory = (dto: { key: string; label: string; icon: string }) =>
   client.post('/config/categories', dto).then(r => r.data);
 
-export const deleteCategory = (key: string) =>
-  client.delete(`/config/categories/${key}`).then(r => r.data);
+export const archiveCategory = (key: string) =>
+  client.put(`/config/categories/${key}/archive`).then(r => r.data);
+
+export const restoreCategory = (key: string) =>
+  client.put(`/config/categories/${key}/restore`).then(r => r.data);
 
 export const updateCategory = (key: string, dto: { label?: string; icon?: string }) =>
   client.patch(`/config/categories/${key}`, dto).then(r => r.data);

@@ -1,1 +1,79 @@
 @import "tailwindcss";
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Dark theme.
+   Activated by `.dark` on <html> (see ThemeContext). These plain (unlayered)
+   rules override Tailwind's layered utilities, so surfaces re-theme app-wide
+   without touching any JSX. Accent colors (indigo, emerald, rose, …) are left
+   vivid; only neutral surfaces/text/borders and the soft `-50/-100` tints flip.
+   ────────────────────────────────────────────────────────────────────────── */
+
+html              { background: #f1f5f9; }
+html.dark         { background: #020617; }
+body              { transition: background-color .25s ease; }
+
+/* Pointer cursor on all interactive elements */
+button:not(:disabled), a, label, summary, [role="button"] { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+
+/* Surfaces */
+.dark .bg-slate-50   { background-color: #0b1120; }
+.dark .bg-white      { background-color: #1e293b; }
+.dark .bg-slate-100  { background-color: #334155; }
+.dark .bg-slate-200  { background-color: #475569; }
+.dark .bg-slate-300  { background-color: #475569; }
+
+/* Text */
+.dark .text-slate-900 { color: #f8fafc; }
+.dark .text-slate-800 { color: #f1f5f9; }
+.dark .text-slate-700 { color: #e2e8f0; }
+.dark .text-slate-600 { color: #cbd5e1; }
+.dark .text-slate-500 { color: #94a3b8; }
+.dark .text-slate-400 { color: #94a3b8; }
+.dark .text-slate-300 { color: #64748b; }
+
+/* Borders + divides */
+.dark .border-slate-50  { border-color: #1e293b; }
+.dark .border-slate-100 { border-color: #2a3850; }
+.dark .border-slate-200 { border-color: #334155; }
+.dark .border-slate-300 { border-color: #475569; }
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #2a3850; }
+
+/* Hairline row dividers (h-px bg-slate-50) — keep visible on cards */
+.dark .bg-slate-50.h-px { background-color: #2a3850; }
+
+/* Soft accent tints (icon badges, active pills, ministats) → translucent */
+.dark .bg-emerald-50 { background-color: rgba(16,185,129,.15); }
+.dark .bg-orange-50  { background-color: rgba(249,115,22,.15); }
+.dark .bg-pink-50    { background-color: rgba(236,72,153,.15); }
+.dark .bg-blue-50    { background-color: rgba(59,130,246,.15); }
+.dark .bg-amber-50   { background-color: rgba(245,158,11,.15); }
+.dark .bg-rose-50    { background-color: rgba(244,63,94,.15); }
+.dark .bg-violet-50  { background-color: rgba(139,92,246,.15); }
+.dark .bg-teal-50    { background-color: rgba(20,184,166,.15); }
+.dark .bg-indigo-50  { background-color: rgba(99,102,241,.20); }
+.dark .bg-purple-50  { background-color: rgba(168,85,247,.15); }
+
+.dark .bg-emerald-100 { background-color: rgba(16,185,129,.22); }
+.dark .bg-rose-100    { background-color: rgba(244,63,94,.22); }
+.dark .bg-blue-100    { background-color: rgba(59,130,246,.22); }
+.dark .bg-amber-100   { background-color: rgba(245,158,11,.22); }
+.dark .bg-violet-100  { background-color: rgba(139,92,246,.22); }
+.dark .bg-indigo-100  { background-color: rgba(99,102,241,.25); }
+.dark .bg-purple-100  { background-color: rgba(168,85,247,.22); }
+
+/* Brighten accent text a touch on dark for contrast */
+.dark .text-indigo-600  { color: #a5b4fc; }
+.dark .text-emerald-600 { color: #6ee7b7; }
+.dark .text-emerald-700 { color: #6ee7b7; }
+.dark .text-rose-600    { color: #fda4af; }
+.dark .text-blue-600    { color: #93c5fd; }
+.dark .text-blue-700    { color: #93c5fd; }
+.dark .text-amber-600   { color: #fcd34d; }
+.dark .text-amber-700   { color: #fcd34d; }
+.dark .text-violet-600  { color: #c4b5fd; }
+.dark .text-violet-700  { color: #c4b5fd; }
+.dark .text-purple-600  { color: #d8b4fe; }
+.dark .text-pink-600    { color: #f9a8d4; }
+.dark .text-orange-600  { color: #fdba74; }
+.dark .text-teal-600    { color: #5eead4; }

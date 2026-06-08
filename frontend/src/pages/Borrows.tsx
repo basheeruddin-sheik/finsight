@@ -1,377 +1,538 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  getBorrows, getBorrowSummary, addPayment, settleBorrow,
-  createBorrow, deleteBorrow, type Borrow, type BorrowSummary,
-} from '../api/borrows';
-import { getPersons } from '../api/persons';
-import type { Person } from '../types';
-import { formatAmount, formatDate } from '../utils';
-import { Spinner, EmptyState, BottomSheet, StatusBadge, ConfirmModal } from '../components/ui';
+import { getBorrowGroups, getBorrowSummary, settleBorrow, unsettleBorrow, type PersonBorrows, type Borrow, type BorrowAudit, type BorrowSummary } from '../api/borrows';
+import { formatAmount, formatDate, formatTime } from '../utils';
+import { Spinner, EmptyState, BottomSheet, ConfirmModal } from '../components/ui';
+import { HandCoins, Plus, ArrowDownLeft, ArrowUpRight, Percent, Check, RotateCcw, Ban, BookOpen, X, type LucideIcon } from 'lucide-react';
 
-const localToday = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+const latestActivity = (b: Borrow) => Math.max(...b.audit.map(a => new Date(a.createdAt ?? a.date).getTime()));
+const latestGroupActivity = (g: PersonBorrows) => Math.max(...g.borrows.map(latestActivity));
+const isGroupSettled = (g: PersonBorrows) => g.borrows.every(b => b.status === 'SETTLED');
 
-export default function Borrows() {
-  const navigate = useNavigate();
-
-  const [borrows,      setBorrows]     = useState<Borrow[]>([]);
-  const [summary,      setSummary]     = useState<BorrowSummary | null>(null);
-  const [persons,      setPersons]     = useState<Person[]>([]);
-  const [expanded,     setExpanded]    = useState<string | null>(null);
-  const [showSettled,  setShowSettled] = useState(false);
-  const [loading,      setLoading]     = useState(true);
-  const [busyId,       setBusyId]      = useState<string | null>(null);
-
-  const [showAddBorrow, setShowAddBorrow] = useState(false);
-  const [ab,    setAb]     = useState({ personId: '', principal: '', interestRate: '0', startDate: localToday() });
-  const [abSaving, setAbSaving] = useState(false);
-  const [abError,  setAbError]  = useState('');
-
-  const [paymentModal, setPaymentModal] = useState<Borrow | null>(null);
-  const [pay,      setPay]      = useState({ amount: '', date: localToday(), note: '' });
-  const [paySaving,setPaySaving]= useState(false);
-  const [payError, setPayError] = useState('');
-
-  type ConfirmState = { title: string; message: string; confirmLabel: string; variant: 'danger' | 'confirm'; action: () => void };
-  const [confirmModal, setConfirmModal] = useState<ConfirmState | null>(null);
-
-  const initialLoad = async () => {
-    setLoading(true);
-    try {
-      const [b, s, p] = await Promise.all([getBorrows(), getBorrowSummary(), getPersons()]);
-      setBorrows(b); setSummary(s); setPersons(p);
-    } finally { setLoading(false); }
-  };
-
-  const refresh = async () => {
-    try {
-      const [b, s] = await Promise.all([getBorrows(), getBorrowSummary()]);
-      setBorrows(b); setSummary(s);
-    } catch {}
-  };
-
-  useEffect(() => { initialLoad(); }, []);
-
-  const handleAddBorrow = async () => {
-    if (!ab.personId) { setAbError('Select a person'); return; }
-    const principal = Number(ab.principal);
-    if (!ab.principal || isNaN(principal) || principal <= 0) { setAbError('Enter a valid amount'); return; }
-    setAbSaving(true); setAbError('');
-    try {
-      await createBorrow({ personId: ab.personId, principal, interestRate: Number(ab.interestRate) || 0, startDate: ab.startDate });
-      setShowAddBorrow(false);
-      setAb({ personId: '', principal: '', interestRate: '0', startDate: localToday() });
-      refresh();
-    } catch (e: any) {
-      setAbError(e?.response?.data?.message ?? 'Failed to save. Try again.');
-    } finally { setAbSaving(false); }
-  };
-
-  const handlePayment = async () => {
-    if (!paymentModal) return;
-    const amount = Number(pay.amount);
-    if (!pay.amount || isNaN(amount) || amount <= 0) { setPayError('Enter a valid amount'); return; }
-    setPaySaving(true); setPayError('');
-    try {
-      await addPayment(paymentModal.id, { amount, date: pay.date, note: pay.note || undefined });
-      setPaymentModal(null);
-      refresh();
-    } catch (e: any) {
-      setPayError(e?.response?.data?.message ?? 'Failed to save. Try again.');
-    } finally { setPaySaving(false); }
-  };
-
-  const handleSettle = async (id: string) => {
-    setBusyId(id);
-    try { await settleBorrow(id); refresh(); }
-    catch { alert('Failed to settle. Try again.'); }
-    finally { setBusyId(null); }
-  };
-
-  const handleDelete = async (id: string) => {
-    setBusyId(id);
-    try { await deleteBorrow(id); setExpanded(null); refresh(); }
-    catch { alert('Failed to delete. Try again.'); }
-    finally { setBusyId(null); }
-  };
-
-  const confirmSettle = (id: string) => setConfirmModal({
-    title: 'Mark as Settled',
-    message: 'This will mark the borrow as fully settled. You can still view it in the settled list.',
-    confirmLabel: 'Mark Settled',
-    variant: 'confirm',
-    action: () => handleSettle(id),
-  });
-
-  const confirmDelete = (id: string) => setConfirmModal({
-    title: 'Delete Borrow',
-    message: 'This will permanently delete the borrow and all its payment records.',
-    confirmLabel: 'Delete',
-    variant: 'danger',
-    action: () => handleDelete(id),
-  });
-
-  const visible = showSettled ? borrows : borrows.filter(b => b.status !== 'SETTLED');
-  const settledCount = borrows.filter(b => b.status === 'SETTLED').length;
-
+function SectionHeader({ label, count, action }: { label: string; count: number; action?: ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-50 pb-28">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-100 px-4 py-3 sticky top-0 z-10">
-        <h1 className="text-base font-semibold text-slate-900">Borrows</h1>
+    <div className="flex items-center justify-between px-1">
+      <div className="flex items-center gap-2">
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{label}</p>
+        <span className="text-[11px] font-semibold text-slate-300">{count}</span>
       </div>
-
-      {/* Summary header */}
-      {summary && (
-        <div className="mx-4 mt-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-          <div className="grid grid-cols-3 divide-x divide-slate-100">
-            <SummaryCell label="Lent" value={formatAmount(summary.totalLent)} color="text-slate-800" />
-            <SummaryCell label="Recovered" value={formatAmount(summary.totalRecovered)} color="text-emerald-600" />
-            <SummaryCell label="Outstanding" value={formatAmount(summary.totalOutstanding)} color="text-rose-500" />
-          </div>
-          {summary.activeCount > 0 && (
-            <div className="border-t border-slate-100 px-4 py-2">
-              <p className="text-xs text-slate-400">{summary.activeCount} active borrow{summary.activeCount > 1 ? 's' : ''}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {loading ? <Spinner /> : borrows.length === 0 ? (
-        <EmptyState icon="🤝" title="No borrows yet" description="Tap + to record money you've lent to someone"
-          action={
-            <button onClick={() => setShowAddBorrow(true)}
-              className="mt-2 px-5 py-2.5 bg-slate-900 text-white rounded-2xl text-sm font-semibold">
-              Add Borrow
-            </button>
-          }
-        />
-      ) : (
-        <div className="p-4 flex flex-col gap-3">
-          {visible.map(b => (
-            <div key={b.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-              {/* Card header — tappable */}
-              <div className="flex items-center gap-3 px-4 py-4 cursor-pointer active:bg-slate-50"
-                onClick={() => setExpanded(expanded === b.id ? null : b.id)}>
-                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-base font-bold text-slate-600 shrink-0">
-                  {b.person.name[0].toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-900">{b.person.name}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {formatAmount(b.principal)} · {formatDate(b.startDate)}
-                    {b.interestRate > 0 ? ` · ${b.interestRate}% p.a.` : ''}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-1.5 shrink-0">
-                  <p className={`text-sm font-bold ${b.status === 'SETTLED' ? 'text-slate-400 line-through' : 'text-rose-500'}`}>
-                    {formatAmount(b.totalOwed)}
-                  </p>
-                  <StatusBadge status={b.status} />
-                </div>
-              </div>
-
-              {/* Expanded detail */}
-              {expanded === b.id && (
-                <div className="border-t border-slate-100 px-4 py-4 flex flex-col gap-4">
-                  {/* Interest */}
-                  {b.interestRate > 0 && b.status !== 'SETTLED' && (
-                    <div className="flex justify-between items-center bg-amber-50 rounded-xl px-3 py-2.5 border border-amber-100">
-                      <p className="text-xs font-medium text-amber-700">Interest accrued</p>
-                      <p className="text-sm font-bold text-amber-600">+{formatAmount(b.interestOwed)}</p>
-                    </div>
-                  )}
-
-                  {/* Payment history */}
-                  {b.payments.length > 0 && (
-                    <div>
-                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Payment History</p>
-                      <div className="bg-slate-50 rounded-xl overflow-hidden border border-slate-100">
-                        {b.payments.map((p, i) => (
-                          <div key={p.id}>
-                            {i > 0 && <div className="h-px bg-slate-100 mx-3" />}
-                            <div className="flex justify-between items-center px-3 py-2.5">
-                              <div>
-                                <p className="text-xs font-medium text-slate-700">{formatDate(p.date)}</p>
-                                {p.note && <p className="text-[10px] text-slate-400">{p.note}</p>}
-                              </div>
-                              <p className="text-sm font-bold text-emerald-600">+{formatAmount(p.amount)}</p>
-                            </div>
-                          </div>
-                        ))}
-                        <div className="border-t border-slate-200 flex justify-between px-3 py-2">
-                          <p className="text-xs text-slate-400">Total paid</p>
-                          <p className="text-xs font-bold text-slate-600">{formatAmount(b.totalPaid)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    {b.status !== 'SETTLED' && (
-                      <>
-                        <button disabled={busyId === b.id} onClick={() => { setPaymentModal(b); setPay({ amount: '', date: localToday(), note: '' }); setPayError(''); }}
-                          className="flex-1 py-2.5 text-sm font-semibold bg-slate-900 text-white rounded-xl disabled:opacity-40">
-                          + Payment
-                        </button>
-                        <button disabled={busyId === b.id} onClick={() => confirmSettle(b.id)}
-                          className="flex-1 py-2.5 text-sm font-semibold border border-emerald-200 text-emerald-600 rounded-xl bg-emerald-50 disabled:opacity-40">
-                          {busyId === b.id ? '…' : 'Settle'}
-                        </button>
-                      </>
-                    )}
-                    <button disabled={busyId === b.id} onClick={() => confirmDelete(b.id)}
-                      className="py-2.5 px-3 text-sm font-semibold border border-rose-200 text-rose-400 rounded-xl bg-rose-50 disabled:opacity-40">
-                      🗑
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {settledCount > 0 && (
-            <button onClick={() => setShowSettled(v => !v)}
-              className="py-2.5 text-xs font-semibold text-slate-400 text-center border border-dashed border-slate-200 rounded-2xl bg-white">
-              {showSettled ? `Hide ${settledCount} settled` : `Show ${settledCount} settled borrow${settledCount > 1 ? 's' : ''}`}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* FAB */}
-      <button onClick={() => { setAb({ personId: '', principal: '', interestRate: '0', startDate: localToday() }); setAbError(''); setShowAddBorrow(true); }}
-        className="fixed bottom-24 right-4 w-14 h-14 bg-slate-900 text-white rounded-full shadow-lg flex items-center justify-center text-2xl z-20">
-        +
-      </button>
-
-      {/* Add Borrow */}
-      {showAddBorrow && (
-        <BottomSheet title="Add Borrow" onClose={() => !abSaving && setShowAddBorrow(false)}>
-          {persons.length === 0 ? (
-            <div className="text-center py-4">
-              <p className="text-sm text-slate-500 mb-4">No people added yet.</p>
-              <button onClick={() => { setShowAddBorrow(false); navigate('/persons'); }}
-                className="px-6 py-3 bg-slate-900 text-white rounded-2xl text-sm font-semibold">
-                Go to People
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="bg-slate-50 rounded-2xl border border-slate-100">
-                <select value={ab.personId} onChange={e => setAb({ ...ab, personId: e.target.value })}
-                  className="w-full bg-transparent px-4 py-3 text-sm text-slate-800 outline-none">
-                  <option value="">Select person…</option>
-                  {persons.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-
-              <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Principal Amount (₹)</p>
-                <input type="number" inputMode="decimal" placeholder="0" value={ab.principal}
-                  onChange={e => setAb({ ...ab, principal: e.target.value })}
-                  className="w-full text-2xl font-bold text-slate-900 outline-none bg-transparent" />
-              </div>
-
-              <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Interest Rate % / year (0 = interest-free)</p>
-                <input type="number" inputMode="decimal" placeholder="0" value={ab.interestRate}
-                  onChange={e => setAb({ ...ab, interestRate: e.target.value })}
-                  className="w-full text-lg font-semibold text-slate-900 outline-none bg-transparent" />
-              </div>
-
-              <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Start Date</p>
-                <input type="date" value={ab.startDate} onChange={e => setAb({ ...ab, startDate: e.target.value })}
-                  className="w-full text-[15px] text-slate-800 outline-none bg-transparent" />
-              </div>
-
-              {abError && <p className="text-sm text-rose-500 font-medium">{abError}</p>}
-
-              <div className="flex gap-3 pb-2">
-                <button onClick={() => setShowAddBorrow(false)} disabled={abSaving}
-                  className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-600 disabled:opacity-40">
-                  Cancel
-                </button>
-                <button onClick={handleAddBorrow} disabled={abSaving}
-                  className="flex-1 py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-semibold disabled:opacity-40">
-                  {abSaving ? 'Saving…' : 'Save'}
-                </button>
-              </div>
-            </>
-          )}
-        </BottomSheet>
-      )}
-
-      {/* Add Payment */}
-      {paymentModal && (
-        <BottomSheet
-          title="Record Payment"
-          onClose={() => !paySaving && setPaymentModal(null)}
-        >
-          <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
-            <p className="text-xs font-semibold text-amber-700">{paymentModal.person.name}</p>
-            <p className="text-sm text-amber-600">Outstanding: {formatAmount(paymentModal.totalOwed)}</p>
-          </div>
-
-          <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Amount Received (₹)</p>
-            <input type="number" inputMode="decimal" placeholder="0" value={pay.amount} autoFocus
-              onChange={e => setPay({ ...pay, amount: e.target.value })}
-              className="w-full text-2xl font-bold text-slate-900 outline-none bg-transparent" />
-          </div>
-
-          <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Date</p>
-            <input type="date" value={pay.date} onChange={e => setPay({ ...pay, date: e.target.value })}
-              className="w-full text-[15px] text-slate-800 outline-none bg-transparent" />
-          </div>
-
-          <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Note (optional)</p>
-            <input type="text" placeholder="e.g. partial return, full settlement…" value={pay.note}
-              onChange={e => setPay({ ...pay, note: e.target.value })}
-              className="w-full text-[15px] text-slate-800 outline-none bg-transparent" />
-          </div>
-
-          {payError && <p className="text-sm text-rose-500 font-medium">{payError}</p>}
-
-          <div className="flex gap-3 pb-2">
-            <button onClick={() => setPaymentModal(null)} disabled={paySaving}
-              className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-600 disabled:opacity-40">
-              Cancel
-            </button>
-            <button onClick={handlePayment} disabled={paySaving}
-              className="flex-1 py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-semibold disabled:opacity-40">
-              {paySaving ? 'Saving…' : 'Save Payment'}
-            </button>
-          </div>
-        </BottomSheet>
-      )}
-
-      {confirmModal && (
-        <ConfirmModal
-          title={confirmModal.title}
-          message={confirmModal.message}
-          confirmLabel={confirmModal.confirmLabel}
-          variant={confirmModal.variant}
-          onConfirm={() => { const action = confirmModal.action; setConfirmModal(null); action(); }}
-          onCancel={() => setConfirmModal(null)}
-        />
-      )}
+      {action}
     </div>
   );
 }
 
-function SummaryCell({ label, value, color }: { label: string; value: string; color: string }) {
+// ── Active mode: compact square card per person ───────────────────────────────
+function CollectCard({ g, onClick }: { g: PersonBorrows; onClick: () => void }) {
   return (
-    <div className="flex flex-col items-center py-4 px-2">
-      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">{label}</p>
-      <p className={`text-base font-bold ${color}`}>{value}</p>
+    <button onClick={onClick}
+      className="snap-start shrink-0 w-36 bg-white rounded-2xl border border-slate-100 shadow-sm p-4 text-left active:bg-slate-50 transition-colors flex flex-col">
+      <div className="flex items-center justify-between">
+        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-sm font-bold text-indigo-600 shrink-0">
+          {g.person.name[0].toUpperCase()}
+        </div>
+        {g.borrows.length > 1 && (
+          <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 rounded-full px-2 py-0.5">{g.borrows.length} loans</span>
+        )}
+      </div>
+      <p className="text-sm font-semibold text-slate-800 truncate mt-3">{g.person.name}</p>
+      <p className="text-xl font-bold text-rose-500 mt-1 leading-none">{formatAmount(g.outstanding)}</p>
+      <p className="text-[10px] text-slate-400 mt-1">to get back</p>
+      {g.interestPending > 0 && (
+        <p className="text-[10px] font-semibold text-amber-500 mt-1.5">+{formatAmount(g.interestPending)} interest</p>
+      )}
+    </button>
+  );
+}
+
+// ── Active mode: single loan row ──────────────────────────────────────────────
+function LoanRow({ b, settled, onClick }: { b: Borrow; settled: boolean; onClick: () => void }) {
+  const name = b.person?.name ?? 'Unknown';
+  const settledLabel = b.writtenOff > 0 ? 'Written off' : b.overReturned > 0 ? 'Over-returned' : 'Settled';
+  return (
+    <button onClick={onClick}
+      className={`w-full rounded-2xl border p-4 flex items-center gap-3 text-left transition-colors ${
+        settled ? 'bg-slate-50 border-slate-100 active:bg-slate-100' : 'bg-white border-slate-100 shadow-sm active:bg-slate-50'
+      }`}>
+      <div className={`w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+        settled ? 'bg-slate-200 text-slate-400' : 'bg-indigo-100 text-indigo-600'
+      }`}>
+        {name[0].toUpperCase()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-semibold truncate ${settled ? 'text-slate-500' : 'text-slate-800'}`}>
+          {name}{b.note ? ` · ${b.note}` : ''}
+        </p>
+        <p className="text-xs text-slate-400 mt-0.5">Lent {formatAmount(b.principal)} · {formatDate(b.date)}</p>
+      </div>
+      <div className="text-right shrink-0">
+        {settled ? (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400">
+            {settledLabel === 'Settled' && <Check size={13} strokeWidth={2.5} />}{settledLabel}
+          </span>
+        ) : (
+          <>
+            <p className="text-sm font-bold text-rose-500">{formatAmount(b.outstanding)}</p>
+            <p className="text-[10px] text-slate-400">to get back</p>
+            {b.interestPending > 0 && <p className="text-[10px] text-amber-500 mt-0.5">+{formatAmount(b.interestPending)} int</p>}
+          </>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ── Ledger mode: per-person row (read-only) ───────────────────────────────────
+function PersonRow({ g, onClick }: { g: PersonBorrows; onClick: () => void }) {
+  const settled = isGroupSettled(g);
+  const totalRepaid = g.totalRepaid;
+  return (
+    <button onClick={onClick}
+      className={`w-full rounded-2xl border p-4 flex items-center gap-3 text-left transition-colors ${
+        settled ? 'bg-slate-50 border-slate-100 active:bg-slate-100' : 'bg-white border-slate-100 shadow-sm active:bg-slate-50'
+      }`}>
+      <div className={`w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+        settled ? 'bg-slate-200 text-slate-400' : 'bg-indigo-100 text-indigo-600'
+      }`}>
+        {g.person.name[0].toUpperCase()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-semibold truncate ${settled ? 'text-slate-400' : 'text-slate-800'}`}>{g.person.name}</p>
+        <p className="text-xs text-slate-400 mt-0.5">
+          Lent {formatAmount(g.totalGiven)} · Paid {formatAmount(totalRepaid)} · {g.borrows.length} loan{g.borrows.length > 1 ? 's' : ''}
+        </p>
+      </div>
+      <div className="text-right shrink-0">
+        {settled ? (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400">
+            <Check size={13} strokeWidth={2.5} /> Settled
+          </span>
+        ) : (
+          <>
+            <p className="text-sm font-bold text-rose-500">{formatAmount(g.outstanding)}</p>
+            <p className="text-[10px] text-slate-400">outstanding</p>
+          </>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ── Shared audit log ──────────────────────────────────────────────────────────
+const KIND_META = {
+  given:    { Icon: ArrowUpRight,  color: 'text-rose-500',    bg: 'bg-rose-50',    label: 'Lent',        sign: '−' },
+  repaid:   { Icon: ArrowDownLeft, color: 'text-emerald-600', bg: 'bg-emerald-50', label: 'Repaid',      sign: '+' },
+  interest: { Icon: Percent,       color: 'text-amber-600',   bg: 'bg-amber-50',   label: 'Interest',    sign: '+' },
+  writeoff: { Icon: Ban,           color: 'text-slate-500',   bg: 'bg-slate-100',  label: 'Written off', sign: ''  },
+} as const;
+
+function TxnList({ items }: { items: BorrowAudit[] }) {
+  const txns = [...items].sort((a, b) => new Date(b.createdAt ?? b.date).getTime() - new Date(a.createdAt ?? a.date).getTime());
+  return (
+    <div className="rounded-2xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
+      {txns.map(a => {
+        const m = KIND_META[a.kind];
+        return (
+          <div key={a.id} className="flex items-center gap-3 px-4 py-3 bg-white">
+            <span className={`w-9 h-9 rounded-xl ${m.bg} flex items-center justify-center ${m.color} shrink-0`}>
+              <m.Icon size={16} strokeWidth={2} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-slate-800 truncate">{m.label}{a.note ? ` · ${a.note}` : ''}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">{formatDate(a.date)} · {formatTime(a.createdAt)}</p>
+            </div>
+            <p className={`text-sm font-bold ${m.color} shrink-0`}>{m.sign}{formatAmount(a.amount)}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SheetBtn({ onClick, tone, Icon, children }: { onClick: () => void; tone: 'primary' | 'ghost' | 'settle' | 'reopen'; Icon: LucideIcon; children: ReactNode }) {
+  const cls = {
+    primary: 'bg-indigo-600 text-white',
+    ghost:   'border border-slate-700 bg-slate-800 text-slate-200',
+    settle:  'border border-emerald-500/40 bg-emerald-500/10 text-emerald-400',
+    reopen:  'text-slate-400',
+  }[tone];
+  return (
+    <button onClick={onClick} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold active:opacity-80 ${cls}`}>
+      <Icon size={14} /> {children}
+    </button>
+  );
+}
+
+// ── Read-only person ledger sheet ─────────────────────────────────────────────
+function LedgerPersonSheet({ g, onClose }: { g: PersonBorrows; onClose: () => void }) {
+  const settled = isGroupSettled(g);
+  // Sort loans: active first, then settled — within each, newest first.
+  const sorted = [...g.borrows].sort((a, b) => {
+    const aSettled = a.status === 'SETTLED' ? 1 : 0;
+    const bSettled = b.status === 'SETTLED' ? 1 : 0;
+    if (aSettled !== bSettled) return aSettled - bSettled;
+    return latestActivity(b) - latestActivity(a);
+  });
+  return (
+    <BottomSheet title={g.person.name} onClose={onClose}>
+      {/* person summary — read-only */}
+      <div className="rounded-2xl bg-slate-900 p-4">
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+              {settled ? 'Status' : 'Total outstanding'}
+            </p>
+            {settled ? (
+              <p className="text-xl font-bold text-emerald-400 mt-1 leading-none inline-flex items-center gap-1.5">
+                <Check size={18} strokeWidth={2.5} /> All settled
+              </p>
+            ) : (
+              <p className="text-2xl font-bold text-white mt-1 leading-none">{formatAmount(g.outstanding)}</p>
+            )}
+            {g.interestPending > 0 && <p className="text-xs text-amber-400 mt-1.5">+ {formatAmount(g.interestPending)} interest pending</p>}
+            <p className="text-xs text-slate-500 mt-1.5">{g.borrows.length} loan{g.borrows.length > 1 ? 's' : ''}</p>
+          </div>
+          <div className="text-right text-xs shrink-0">
+            <p className="text-slate-400">Lent <span className="font-semibold text-slate-200">{formatAmount(g.totalGiven)}</span></p>
+            <p className="text-slate-400 mt-1">Back <span className="font-semibold text-emerald-400">{formatAmount(g.totalRepaid)}</span></p>
+          </div>
+        </div>
+      </div>
+
+      {/* per-loan blocks with their audit, read-only */}
+      {sorted.map(b => {
+        const loanSettled = b.status === 'SETTLED';
+        const statusLabel = b.writtenOff > 0 ? 'Written off' : b.overReturned > 0 ? 'Over-returned' : 'Settled';
+        return (
+          <div key={b.id} className={`rounded-2xl border overflow-hidden ${loanSettled ? 'border-slate-100 opacity-60' : 'border-slate-200'}`}>
+            {/* loan header */}
+            <div className={`px-4 py-3 flex items-center justify-between ${loanSettled ? 'bg-slate-50' : 'bg-white'}`}>
+              <div className="min-w-0">
+                <p className={`text-sm font-semibold truncate ${loanSettled ? 'text-slate-500' : 'text-slate-800'}`}>
+                  {formatAmount(b.principal)}{b.note ? ` · ${b.note}` : ''}
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">Lent {formatDate(b.date)}</p>
+              </div>
+              <div className="text-right shrink-0 ml-3">
+                {loanSettled ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400">
+                    <Check size={12} strokeWidth={2.5} />{statusLabel}
+                  </span>
+                ) : (
+                  <>
+                    <p className="text-sm font-bold text-rose-500">{formatAmount(b.outstanding)}</p>
+                    {b.interestPending > 0 && <p className="text-[10px] text-amber-500">+{formatAmount(b.interestPending)} int</p>}
+                  </>
+                )}
+              </div>
+            </div>
+            {/* audit entries */}
+            <div className="divide-y divide-slate-100">
+              {[...b.audit]
+                .sort((x, y) => new Date(y.createdAt ?? y.date).getTime() - new Date(x.createdAt ?? x.date).getTime())
+                .map(a => {
+                  const m = KIND_META[a.kind];
+                  return (
+                    <div key={a.id} className={`flex items-center gap-3 px-4 py-2.5 ${loanSettled ? 'bg-slate-50' : 'bg-white'}`}>
+                      <span className={`w-8 h-8 rounded-lg ${m.bg} flex items-center justify-center ${m.color} shrink-0`}>
+                        <m.Icon size={14} strokeWidth={2} />
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium truncate ${loanSettled ? 'text-slate-500' : 'text-slate-700'}`}>
+                          {m.label}{a.note ? ` · ${a.note}` : ''}
+                        </p>
+                        <p className="text-[11px] text-slate-400">{formatDate(a.date)} · {formatTime(a.createdAt)}</p>
+                      </div>
+                      <p className={`text-sm font-bold ${m.color} shrink-0 ${loanSettled ? 'opacity-70' : ''}`}>
+                        {m.sign}{formatAmount(a.amount)}
+                      </p>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        );
+      })}
+    </BottomSheet>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+export default function Borrows() {
+  const navigate = useNavigate();
+  const [groups,   setGroups]   = useState<PersonBorrows[]>([]);
+  const [summary,  setSummary]  = useState<BorrowSummary | null>(null);
+  const [loading,  setLoading]  = useState(true);
+  const [loan,     setLoan]     = useState<Borrow | null>(null);
+  const [person,   setPerson]   = useState<PersonBorrows | null>(null);
+  const [ledgerPerson, setLedgerPerson] = useState<PersonBorrows | null>(null);
+  const [ledger,   setLedger]   = useState(false);   // false = active view, true = ledger view
+  const [confirm,  setConfirm]  = useState<{ borrows: Borrow[]; kind: 'settle' | 'reopen' } | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [g, s] = await Promise.all([getBorrowGroups(), getBorrowSummary()]);
+      setGroups(g); setSummary(s);
+      const allLoans = g.flatMap(x => x.borrows);
+      setLoan(prev => prev ? allLoans.find(b => b.id === prev.id) ?? null : null);
+      setPerson(prev => prev ? g.find(x => x.person.id === prev.person.id) ?? null : null);
+      setLedgerPerson(prev => prev ? g.find(x => x.person.id === prev.person.id) ?? null : null);
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const applyConfirm = async () => {
+    if (!confirm) return;
+    const { borrows, kind } = confirm;
+    setConfirm(null);
+    await Promise.all(borrows.map(b => (kind === 'settle' ? settleBorrow(b.id) : unsettleBorrow(b.id))));
+    await load();
+  };
+
+  // Active mode: active groups (cards) + per-loan lists.
+  const activeGroups  = groups
+    .filter(g => g.outstanding > 0 || g.interestPending > 0)
+    .sort((a, b) => latestGroupActivity(b) - latestGroupActivity(a));
+  const loans         = groups.flatMap(g => g.borrows);
+  const activeLoans   = loans.filter(b => b.status !== 'SETTLED').sort((a, b) => latestActivity(b) - latestActivity(a));
+  const settledLoans  = loans.filter(b => b.status === 'SETTLED' ).sort((a, b) => latestActivity(b) - latestActivity(a));
+
+  // Ledger mode: all persons, active first then settled, each sorted by last activity.
+  const allGroups = [...groups].sort((a, b) => {
+    const aS = isGroupSettled(a) ? 1 : 0;
+    const bS = isGroupSettled(b) ? 1 : 0;
+    if (aS !== bS) return aS - bS;
+    return latestGroupActivity(b) - latestGroupActivity(a);
+  });
+
+  return (
+    <div className="min-h-screen bg-slate-50 pb-28">
+      <div className="bg-white border-b border-slate-100 px-4 py-3 sticky top-0 z-10">
+        <h1 className="text-base font-semibold text-slate-900">Borrows</h1>
+      </div>
+
+      {/* Summary */}
+      {summary && (
+        <div className="mx-4 mt-4 bg-slate-900 rounded-3xl p-5 shadow-lg shadow-slate-900/10">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Outstanding</p>
+          <p className="text-[34px] leading-none font-bold text-white">{formatAmount(summary.totalOutstanding)}</p>
+          {summary.interestPending > 0 && (
+            <p className="text-xs text-amber-400 mt-2">+ {formatAmount(summary.interestPending)} interest pending</p>
+          )}
+          <div className="mt-4 pt-4 border-t border-slate-700 grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs text-slate-500">Total lent</p>
+              <p className="text-base font-bold text-white mt-0.5">{formatAmount(summary.totalLent)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-slate-500">Recovered</p>
+              <p className="text-base font-bold text-emerald-400 mt-0.5">{formatAmount(summary.totalRecovered)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loading ? <Spinner /> : groups.length === 0 ? (
+        <EmptyState
+          icon={<HandCoins size={32} />}
+          title="No borrows yet"
+          description="Tap + and choose Borrow Given to lend money to someone"
+          action={
+            <button onClick={() => navigate('/add?type=BORROW_GIVEN')}
+              className="mt-2 px-5 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-semibold">
+              Add Borrow Given
+            </button>
+          }
+        />
+      ) : ledger ? (
+        /* ── LEDGER VIEW ─────────────────────────────────────────────────── */
+        <div className="py-4 px-4 flex flex-col gap-3">
+          <SectionHeader
+            label="All borrowers"
+            count={allGroups.length}
+            action={
+              <button onClick={() => setLedger(false)}
+                className="flex items-center gap-1 text-[11px] font-semibold text-indigo-500 active:opacity-70">
+                <X size={12} strokeWidth={2.5} /> Close
+              </button>
+            }
+          />
+          <div className="flex flex-col gap-2.5">
+            {allGroups.map(g => <PersonRow key={g.person.id} g={g} onClick={() => setLedgerPerson(g)} />)}
+          </div>
+        </div>
+      ) : (
+        /* ── ACTIVE VIEW ─────────────────────────────────────────────────── */
+        <div className="py-4 flex flex-col gap-5">
+          {activeGroups.length > 0 && (
+            <section>
+              <div className="px-4">
+                <SectionHeader
+                  label="To collect"
+                  count={activeGroups.length}
+                  action={
+                    <button onClick={() => setLedger(true)}
+                      className="flex items-center gap-1 text-[11px] font-semibold text-indigo-500 active:opacity-70">
+                      <BookOpen size={12} strokeWidth={2.5} /> Full ledger
+                    </button>
+                  }
+                />
+              </div>
+              <div className="mt-2.5 flex gap-3 overflow-x-auto px-4 pb-1 snap-x [&::-webkit-scrollbar]:hidden"
+                style={{ scrollbarWidth: 'none' }}>
+                {activeGroups.map(g => <CollectCard key={g.person.id} g={g} onClick={() => setPerson(g)} />)}
+              </div>
+            </section>
+          )}
+
+          <section className="px-4 flex flex-col gap-5">
+            {activeLoans.length > 0 && (
+              <div>
+                <SectionHeader label="To be paid" count={activeLoans.length} />
+                <div className="flex flex-col gap-2.5 mt-2">
+                  {activeLoans.map(b => <LoanRow key={b.id} b={b} settled={false} onClick={() => setLoan(b)} />)}
+                </div>
+              </div>
+            )}
+            {settledLoans.length > 0 && (
+              <div>
+                <SectionHeader label="Settled" count={settledLoans.length} />
+                <div className="flex flex-col gap-2.5 mt-2">
+                  {settledLoans.map(b => <LoanRow key={b.id} b={b} settled onClick={() => setLoan(b)} />)}
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {/* Active mode — single loan detail with actions */}
+      {loan && !ledger && (() => {
+        const b = loan;
+        const open        = b.status !== 'SETTLED';
+        const name        = b.person?.name ?? 'Unknown';
+        const canInterest = b.interestExpected > 0 && (open || b.interestPending > 0);
+        const canReopen   = !open && b.settledFlag;
+        const statusLabel = b.writtenOff > 0 ? 'Written off' : b.overReturned > 0 ? 'Over-returned' : 'Settled';
+        return (
+          <BottomSheet title={name} onClose={() => setLoan(null)}>
+            <div className="rounded-2xl bg-slate-900 p-4">
+              <div className="flex items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">{open ? 'To get back' : 'Status'}</p>
+                  {open ? (
+                    <p className="text-2xl font-bold text-white mt-1 leading-none">{formatAmount(b.outstanding)}</p>
+                  ) : (
+                    <p className="text-xl font-bold text-emerald-400 mt-1 leading-none inline-flex items-center gap-1.5"><Check size={18} strokeWidth={2.5} /> {statusLabel}</p>
+                  )}
+                  <p className="text-xs text-slate-400 mt-1.5">Lent {formatAmount(b.principal)} · {formatDate(b.date)}{b.note ? ` · ${b.note}` : ''}</p>
+                  {b.interestPending > 0 && <p className="text-xs text-amber-400 mt-1">+ {formatAmount(b.interestPending)} interest pending</p>}
+                  {b.writtenOff > 0 && <p className="text-xs text-slate-400 mt-1">{formatAmount(b.writtenOff)} written off (loss)</p>}
+                </div>
+                <div className="text-right text-xs shrink-0">
+                  <p className="text-slate-400">Repaid <span className="font-semibold text-emerald-400">{formatAmount(b.principalPaid)}</span></p>
+                  {b.interestExpected > 0 && <p className="text-slate-400 mt-1">Interest <span className="font-semibold text-slate-200">{formatAmount(b.interestPaid)}/{formatAmount(b.interestExpected)}</span></p>}
+                </div>
+              </div>
+              {(open || canInterest || canReopen) && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {open && <SheetBtn tone="primary" Icon={ArrowDownLeft} onClick={() => navigate(`/add?type=BORROW_RECEIVED&person=${b.personId}&borrow=${b.id}`)}>Record repayment</SheetBtn>}
+                  {canInterest && <SheetBtn tone="ghost" Icon={Percent} onClick={() => navigate(`/add?type=INTEREST_RECEIVED&person=${b.personId}&borrow=${b.id}`)}>Add interest</SheetBtn>}
+                  {open && <SheetBtn tone="settle" Icon={Check} onClick={() => setConfirm({ borrows: [b], kind: 'settle' })}>Settle</SheetBtn>}
+                  {canReopen && <SheetBtn tone="reopen" Icon={RotateCcw} onClick={() => setConfirm({ borrows: [b], kind: 'reopen' })}>Reopen</SheetBtn>}
+                </div>
+              )}
+            </div>
+            <TxnList items={b.audit} />
+            <button onClick={() => navigate(`/add?type=BORROW_GIVEN&person=${b.personId}`)}
+              className="w-full py-3 rounded-2xl border border-dashed border-slate-300 text-sm font-semibold text-slate-500 flex items-center justify-center gap-1.5">
+              <Plus size={16} /> Lend more to {name}
+            </button>
+          </BottomSheet>
+        );
+      })()}
+
+      {/* Active mode — person overview with actions */}
+      {person && !ledger && (() => {
+        const g = person;
+        const openLoans  = g.borrows.filter(b => b.status !== 'SETTLED');
+        const hasOpen    = openLoans.length > 0;
+        const hasInterest = g.borrows.some(b => b.interestExpected > 0);
+        const reopenable = g.borrows.filter(b => b.settledFlag);
+        return (
+          <BottomSheet title={g.person.name} onClose={() => setPerson(null)}>
+            <div className="rounded-2xl bg-slate-900 p-4">
+              <div className="flex items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">{hasOpen ? 'To get back' : 'Status'}</p>
+                  {hasOpen ? (
+                    <p className="text-2xl font-bold text-white mt-1 leading-none">{formatAmount(g.outstanding)}</p>
+                  ) : (
+                    <p className="text-xl font-bold text-emerald-400 mt-1 leading-none inline-flex items-center gap-1.5"><Check size={18} strokeWidth={2.5} /> All settled</p>
+                  )}
+                  {g.interestPending > 0 && <p className="text-xs text-amber-400 mt-1.5">+ {formatAmount(g.interestPending)} interest pending</p>}
+                  <p className="text-xs text-slate-400 mt-1.5">{g.borrows.length} loan{g.borrows.length > 1 ? 's' : ''}</p>
+                </div>
+                <div className="text-right text-xs shrink-0">
+                  <p className="text-slate-400">Lent <span className="font-semibold text-slate-200">{formatAmount(g.totalGiven)}</span></p>
+                  <p className="text-slate-400 mt-1">Back <span className="font-semibold text-emerald-400">{formatAmount(g.totalRepaid)}</span></p>
+                </div>
+              </div>
+              {(hasOpen || reopenable.length > 0) && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {hasOpen && <SheetBtn tone="primary" Icon={ArrowDownLeft} onClick={() => navigate(`/add?type=BORROW_RECEIVED&person=${g.person.id}`)}>Record repayment</SheetBtn>}
+                  {hasOpen && hasInterest && <SheetBtn tone="ghost" Icon={Percent} onClick={() => navigate(`/add?type=INTEREST_RECEIVED&person=${g.person.id}`)}>Add interest</SheetBtn>}
+                  {hasOpen && <SheetBtn tone="settle" Icon={Check} onClick={() => setConfirm({ borrows: openLoans, kind: 'settle' })}>Settle{openLoans.length > 1 ? ' all' : ''}</SheetBtn>}
+                  {!hasOpen && reopenable.length > 0 && <SheetBtn tone="reopen" Icon={RotateCcw} onClick={() => setConfirm({ borrows: reopenable, kind: 'reopen' })}>Reopen</SheetBtn>}
+                </div>
+              )}
+            </div>
+            <TxnList items={g.borrows.flatMap(b => b.audit)} />
+            <button onClick={() => navigate(`/add?type=BORROW_GIVEN&person=${g.person.id}`)}
+              className="w-full py-3 rounded-2xl border border-dashed border-slate-300 text-sm font-semibold text-slate-500 flex items-center justify-center gap-1.5">
+              <Plus size={16} /> Lend more to {g.person.name}
+            </button>
+          </BottomSheet>
+        );
+      })()}
+
+      {/* Ledger mode — read-only person detail */}
+      {ledgerPerson && ledger && (
+        <LedgerPersonSheet g={ledgerPerson} onClose={() => setLedgerPerson(null)} />
+      )}
+
+      {/* Lend FAB — only in active view */}
+      {!ledger && (
+        <div className="fixed left-0 right-0 z-20 pointer-events-none" style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
+          <div className="max-w-md mx-auto px-4 flex justify-end">
+            <button onClick={() => navigate('/add?type=BORROW_GIVEN')} aria-label="Lend"
+              className="pointer-events-auto flex items-center gap-2 px-5 py-3.5 bg-indigo-600 text-white rounded-full shadow-lg shadow-indigo-600/30 text-sm font-bold active:scale-95 transition-transform">
+              <HandCoins size={18} strokeWidth={2.5} />
+              Lend
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirm && (() => {
+        const { borrows, kind } = confirm;
+        const writeOff = borrows.reduce((s, b) => s + b.outstanding, 0);
+        const many     = borrows.length > 1;
+        return (
+          <ConfirmModal
+            title={kind === 'reopen' ? 'Reopen borrow?' : many ? `Settle ${borrows.length} loans?` : 'Settle borrow?'}
+            message={kind === 'reopen'
+              ? `${many ? `These ${borrows.length} loans` : 'This loan'} will be marked active again. Any write-off entry is removed.`
+              : writeOff > 0
+                ? `Mark ${many ? 'these loans' : 'this loan'} settled? ${formatAmount(writeOff)} still outstanding will be recorded as written off — a loss, not money recovered.`
+                : `Mark ${many ? 'these loans' : 'this loan'} as fully settled.`}
+            confirmLabel={kind === 'reopen' ? 'Reopen' : 'Settle'}
+            variant="confirm"
+            onConfirm={applyConfirm}
+            onCancel={() => setConfirm(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

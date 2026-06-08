@@ -4,6 +4,7 @@ import { getPersons } from '../api/persons';
 import type { Person } from '../types';
 import { formatAmount } from '../utils';
 import { Spinner, EmptyState, BottomSheet } from '../components/ui';
+import { Users } from 'lucide-react';
 
 export default function Splits() {
   const [splits,       setSplits]      = useState<SplitBalance[]>([]);
@@ -86,10 +87,10 @@ export default function Splits() {
       </div>
 
       {loading ? <Spinner /> : splits.length === 0 ? (
-        <EmptyState icon="🤝" title="No balances yet" description="Track what friends owe you from shared expenses"
+        <EmptyState icon={<Users size={32} />} title="No balances yet" description="Track what friends owe you from shared expenses"
           action={availableFriends.length > 0 ? (
             <button onClick={() => setShowAddModal(true)}
-              className="mt-2 px-5 py-2.5 bg-slate-900 text-white rounded-2xl text-sm font-semibold">
+              className="mt-2 px-5 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-semibold">
               Add Split
             </button>
           ) : undefined}
@@ -113,7 +114,7 @@ export default function Splits() {
                   {saveError && <p className="text-xs text-rose-500 font-medium">{saveError}</p>}
                   <div className="flex gap-2">
                     <button onClick={() => handleSave(s.personId)}
-                      className="flex-1 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-xl">Save</button>
+                      className="flex-1 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl">Save</button>
                     <button onClick={() => { setEditingId(null); setSaveError(''); }}
                       className="flex-1 py-2.5 border border-slate-200 text-slate-600 text-sm font-semibold rounded-xl">Cancel</button>
                   </div>
@@ -142,7 +143,7 @@ export default function Splits() {
 
       {availableFriends.length > 0 && (
         <button onClick={() => setShowAddModal(true)}
-          className="fixed bottom-24 right-4 w-14 h-14 bg-slate-900 text-white rounded-full shadow-lg flex items-center justify-center text-2xl z-20">
+          className="fixed bottom-24 right-4 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center text-2xl z-20">
           +
         </button>
       )}
@@ -185,7 +186,7 @@ export default function Splits() {
             <button onClick={() => { setShowAddModal(false); setAddError(''); setNewTotalPaid(''); setNewMyShare(''); }}
               className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-600">Cancel</button>
             <button onClick={handleAdd}
-              className="flex-1 py-3.5 bg-slate-900 text-white rounded-2xl text-sm font-semibold">Save</button>
+              className="flex-1 py-3.5 bg-indigo-600 text-white rounded-2xl text-sm font-semibold">Save</button>
           </div>
         </BottomSheet>
       )}

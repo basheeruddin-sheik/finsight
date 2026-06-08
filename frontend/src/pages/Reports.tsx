@@ -8,6 +8,8 @@ import type { MonthlyBreakdown, SavingsRateMonth, MoneyOutside, PaymentMethod } 
 import { formatAmount, currentMonth, PAYMENT_LABELS } from '../utils';
 import { useConfig } from '../context/ConfigContext';
 import { Spinner } from '../components/ui';
+import { HandCoins, Users, type LucideIcon } from 'lucide-react';
+import { ConfigIcon, getIconColor } from '../components/configIcons';
 
 const PIE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#8b5cf6', '#14b8a6'];
 
@@ -76,8 +78,9 @@ export default function Reports() {
                   return (
                     <div key={c.category}>
                       <div className="flex justify-between text-xs mb-1">
-                        <span className="font-medium text-slate-700">
-                          {getCategoryIcon(c.category)} {getCategoryLabel(c.category)}
+                        <span className="font-medium text-slate-700 flex items-center gap-1.5">
+                          <ConfigIcon name={getCategoryIcon(c.category)} size={14} className={getIconColor(getCategoryIcon(c.category)).text} />
+                          {getCategoryLabel(c.category)}
                         </span>
                         <span className="font-bold text-slate-800">{formatAmount(c.total)}</span>
                       </div>
@@ -137,8 +140,8 @@ export default function Reports() {
           {/* Money Outside */}
           <Section title="Money Outside">
             <div className="flex flex-col gap-3">
-              <MoneyRow label="🤝 Borrows outstanding" value={moneyOutside?.borrowsOutstanding ?? 0} color="text-amber-600" />
-              <MoneyRow label="👥 Friends owe you (splits)" value={moneyOutside?.splitsOwed ?? 0} color="text-blue-600" />
+              <MoneyRow Icon={HandCoins} label="Borrows outstanding" value={moneyOutside?.borrowsOutstanding ?? 0} color="text-amber-600" />
+              <MoneyRow Icon={Users} label="Friends owe you (splits)" value={moneyOutside?.splitsOwed ?? 0} color="text-blue-600" />
               <div className="border-t border-slate-100 pt-3 flex justify-between items-center">
                 <p className="text-sm font-bold text-slate-800">Total outside</p>
                 <p className="text-base font-bold text-slate-900">{formatAmount(moneyOutside?.grandTotal ?? 0)}</p>
@@ -161,10 +164,12 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function MoneyRow({ label, value, color }: { label: string; value: number; color: string }) {
+function MoneyRow({ Icon, label, value, color }: { Icon: LucideIcon; label: string; value: number; color: string }) {
   return (
     <div className="flex justify-between items-center">
-      <p className="text-sm text-slate-600">{label}</p>
+      <p className="text-sm text-slate-600 flex items-center gap-2">
+        <Icon className="text-slate-400" size={16} strokeWidth={2} /> {label}
+      </p>
       <p className={`text-sm font-bold ${color}`}>{formatAmount(value)}</p>
     </div>
   );

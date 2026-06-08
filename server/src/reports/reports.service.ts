@@ -1,22 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
+import moment from 'moment';
 import { Transaction, TransactionDocument } from '../schemas/transaction.schema';
-import { Borrow, BorrowDocument } from '../schemas/borrow.schema';
-import { BorrowPayment, BorrowPaymentDocument } from '../schemas/borrow-payment.schema';
 import { SplitBalance, SplitBalanceDocument } from '../schemas/split-balance.schema';
 import { Config, ConfigDocument } from '../schemas/config.schema';
+import { BorrowsService } from '../borrows/borrows.service';
 
 function round(n: number) { return Math.round(n * 100) / 100; }
+const monthEpoch = (m: moment.Moment) => ({ from: m.clone().startOf('month').valueOf(), to: m.clone().add(1,'month').startOf('month').valueOf() });
 
 @Injectable()
 export class ReportsService {
   constructor(
     @InjectModel(Transaction.name)   private txnModel: Model<TransactionDocument>,
-    @InjectModel(Borrow.name)        private borrowModel: Model<BorrowDocument>,
-    @InjectModel(BorrowPayment.name) private paymentModel: Model<BorrowPaymentDocument>,
     @InjectModel(SplitBalance.name)  private splitModel: Model<SplitBalanceDocument>,
     @InjectModel(Config.name)        private configModel: Model<ConfigDocument>,
+    private borrows: BorrowsService,
   ) {}
 
   private async getBehaviorMap(): Promise<Map<string, string>> {
@@ -30,10 +30,7 @@ export class ReportsService {
   }
 
   async getMonthlyBreakdown(month: string) {
-    const [year, mon] = month.split('-').map(Number);
-    const from = new Date(year, mon - 1, 1);
-    const to   = new Date(year, mon, 1);
-
+    const { from, to } = monthEpoch(moment(month, 'YYYY-MM'));
     const expenseKeys = await this.getExpenseTypeKeys();
     const txns = await this.txnModel.find({ date: { $gte: from, $lt: to }, type: { $in: expenseKeys } });
 
@@ -57,13 +54,11 @@ export class ReportsService {
 
   async getCategoryTrend(category: string) {
     const months: { month: string; total: number }[] = [];
-    const now = new Date();
     const expenseKeys = await this.getExpenseTypeKeys();
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const from = new Date(d.getFullYear(), d.getMonth(), 1);
-      const to   = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-      const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const m = moment().subtract(i, 'months');
+      const { from, to } = monthEpoch(m);
+      const label = m.format('YYYY-MM');
       const txns = await this.txnModel.find({ date: { $gte: from, $lt: to }, type: { $in: expenseKeys }, category });
       months.push({ month: label, total: round(txns.reduce((s, t) => s + t.amount, 0)) });
     }
@@ -72,14 +67,12 @@ export class ReportsService {
 
   async getSavingsRateTrend(monthsCount: number) {
     const result: any[] = [];
-    const now = new Date();
     const behaviorMap = await this.getBehaviorMap();
 
     for (let i = monthsCount - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const from = new Date(d.getFullYear(), d.getMonth(), 1);
-      const to   = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-      const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const m = moment().subtract(i, 'months');
+      const { from, to } = monthEpoch(m);
+      const label = m.format('YYYY-MM');
       const txns = await this.txnModel.find({ date: { $gte: from, $lt: to } });
 
       const totals: Record<string, number> = {};
@@ -102,24 +95,15 @@ export class ReportsService {
   }
 
   async getMoneyOutside() {
-    const borrows = await this.borrowModel.find({ status: { $in: ['ACTIVE', 'PARTIALLY_RETURNED'] } });
-    const allPayments = await this.paymentModel.find();
-
-    let borrowsOutstanding = 0;
-    for (const b of borrows) {
-      const paid = allPayments.filter(p => p.borrowId.equals(b._id as Types.ObjectId)).reduce((s, p) => s + p.amount, 0);
-      const days = (Date.now() - new Date(b.startDate).getTime()) / (1000 * 60 * 60 * 24);
-      const interest = b.principal * (b.interestRate / 100) * (days / 365);
-      borrowsOutstanding += b.principal + interest - paid;
-    }
+    const { totalOutstanding: borrowsOutstanding, interestPending } = await this.borrows.getSummary();
 
     const splits = await this.splitModel.find();
     const splitsOwed = splits.filter(s => s.balance > 0).reduce((sum, s) => sum + s.balance, 0);
 
     return {
-      borrowsOutstanding: round(borrowsOutstanding),
+      borrowsOutstanding: round(borrowsOutstanding + interestPending),
       splitsOwed: round(splitsOwed),
-      grandTotal: round(borrowsOutstanding + splitsOwed),
+      grandTotal: round(borrowsOutstanding + interestPending + splitsOwed),
     };
   }
 }

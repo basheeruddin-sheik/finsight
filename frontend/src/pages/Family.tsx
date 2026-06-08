@@ -4,6 +4,7 @@ import { getTransactions } from '../api/transactions';
 import type { Person, Transaction } from '../types';
 import { formatAmount, formatDate, currentMonth } from '../utils';
 import { Spinner, EmptyState } from '../components/ui';
+import { Users } from 'lucide-react';
 
 export default function Family() {
   const [members,  setMembers]  = useState<Person[]>([]);
@@ -44,7 +45,7 @@ export default function Family() {
       </div>
 
       {loading ? <Spinner /> : members.length === 0 ? (
-        <EmptyState icon="👨‍👩‍👦" title="No family members" description="Add family members in People → Manage People" />
+        <EmptyState icon={<Users size={32} />} title="No family members" description="Add family members in People → Manage People" />
       ) : (
         <div className="p-4 flex flex-col gap-3">
           {members.map(m => {

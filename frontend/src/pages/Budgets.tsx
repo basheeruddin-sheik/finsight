@@ -4,6 +4,8 @@ import type { Budget } from '../types';
 import { formatAmount, currentMonth } from '../utils';
 import { useConfig } from '../context/ConfigContext';
 import { Spinner, EmptyState, ConfirmModal } from '../components/ui';
+import { AlertTriangle, Target, Trash2, X } from 'lucide-react';
+import { IconBadge } from '../components/configIcons';
 
 function prevMonth(m: string) {
   const [y, mo] = m.split('-').map(Number);
@@ -27,7 +29,7 @@ function pctColor(pct: number) {
 }
 
 export default function Budgets() {
-  const { config, getCategoryLabel, getCategoryIcon } = useConfig();
+  const { activeCategories, getCategoryLabel, getCategoryIcon } = useConfig();
   const [month,       setMonth]      = useState(currentMonth());
   const [budgets,     setBudgets]    = useState<Budget[]>([]);
   const [loading,     setLoading]    = useState(true);
@@ -50,7 +52,7 @@ export default function Budgets() {
   useEffect(() => { load(month); }, [month]);
 
   const budgetedCats    = new Set(budgets.map(b => b.category));
-  const availableCats   = config.categories.filter(c => !budgetedCats.has(c.key));
+  const availableCats   = activeCategories.filter(c => !budgetedCats.has(c.key));
   const overBudgetCount = budgets.filter(b => b.overBudget).length;
 
   async function handleAdd() {
@@ -101,7 +103,7 @@ export default function Budgets() {
           {/* Alert if over budget */}
           {overBudgetCount > 0 && (
             <div className="bg-rose-50 border border-rose-100 rounded-2xl px-4 py-3 flex items-center gap-3">
-              <span className="text-2xl">⚠️</span>
+              <AlertTriangle className="text-rose-500 shrink-0" size={22} strokeWidth={2} />
               <p className="text-sm font-semibold text-rose-600">
                 {overBudgetCount} categor{overBudgetCount > 1 ? 'ies are' : 'y is'} over budget this month
               </p>
@@ -109,7 +111,7 @@ export default function Budgets() {
           )}
 
           {budgets.length === 0 && !adding && (
-            <EmptyState icon="🎯" title="No budgets set" description="Set monthly limits to track your spending by category" />
+            <EmptyState icon={<Target size={32} />} title="No budgets set" description="Set monthly limits to track your spending by category" />
           )}
 
           {/* Budget cards */}
@@ -118,7 +120,7 @@ export default function Budgets() {
               {/* Top row */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl">{getCategoryIcon(b.category)}</span>
+                  <IconBadge name={getCategoryIcon(b.category)} size={20} className="w-9 h-9 rounded-xl" />
                   <div>
                     <p className="text-sm font-semibold text-slate-800">{getCategoryLabel(b.category)}</p>
                     {b.overBudget && (
@@ -134,8 +136,8 @@ export default function Budgets() {
                     Edit
                   </button>
                   <button onClick={() => setConfirmDelId(b.id)}
-                    className="text-xs font-semibold text-rose-400 px-2.5 py-1 border border-rose-100 bg-rose-50 rounded-xl">
-                    ✕
+                    className="text-rose-400 w-7 h-7 flex items-center justify-center border border-rose-100 bg-rose-50 rounded-xl">
+                    <Trash2 size={14} strokeWidth={2} />
                   </button>
                 </div>
               </div>
@@ -151,9 +153,9 @@ export default function Budgets() {
                         className="w-full text-base font-bold text-slate-900 outline-none bg-transparent" />
                     </div>
                     <button onClick={() => handleUpdate(b.id)}
-                      className="px-4 bg-slate-900 text-white text-sm font-semibold rounded-xl">Save</button>
+                      className="px-4 bg-indigo-600 text-white text-sm font-semibold rounded-xl">Save</button>
                     <button onClick={() => { setEditingId(null); setEditError(''); }}
-                      className="px-3 border border-slate-200 text-slate-500 text-sm rounded-xl">✕</button>
+                      className="px-3 border border-slate-200 text-slate-500 rounded-xl flex items-center justify-center"><X size={16} strokeWidth={2.5} /></button>
                   </div>
                   {editError && <p className="text-xs text-rose-500 font-medium">{editError}</p>}
                 </div>
@@ -188,7 +190,7 @@ export default function Budgets() {
                     className="w-full bg-transparent px-4 py-3 text-sm text-slate-800 outline-none">
                     <option value="">Select category…</option>
                     {availableCats.map(c => (
-                      <option key={c.key} value={c.key}>{c.icon} {c.label}</option>
+                      <option key={c.key} value={c.key}>{c.label}</option>
                     ))}
                   </select>
                 </div>
@@ -205,7 +207,7 @@ export default function Budgets() {
                     Cancel
                   </button>
                   <button onClick={handleAdd}
-                    className="flex-1 py-3 bg-slate-900 text-white rounded-2xl text-sm font-semibold">
+                    className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl text-sm font-semibold">
                     Add Budget
                   </button>
                 </div>

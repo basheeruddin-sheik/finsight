@@ -6,4 +6,7 @@ export class UpdateTransactionDto {
   paymentMethod?: string;
   personId?: string;
   note?: string;
+  borrowId?: string;
+  interestExpected?: number;
+  settled?: boolean;
 }

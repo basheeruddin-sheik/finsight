@@ -3,21 +3,22 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Person, PersonDocument } from '../schemas/person.schema';
 import { Transaction, TransactionDocument } from '../schemas/transaction.schema';
-import { Borrow, BorrowDocument } from '../schemas/borrow.schema';
 import { SplitBalance, SplitBalanceDocument } from '../schemas/split-balance.schema';
 import { CreatePersonDto } from './dto/create-person.dto';
+import { BorrowsService } from '../borrows/borrows.service';
 
 @Injectable()
 export class PersonsService {
   constructor(
     @InjectModel(Person.name)        private personModel: Model<PersonDocument>,
     @InjectModel(Transaction.name)   private txnModel: Model<TransactionDocument>,
-    @InjectModel(Borrow.name)        private borrowModel: Model<BorrowDocument>,
     @InjectModel(SplitBalance.name)  private splitModel: Model<SplitBalanceDocument>,
+    private borrows: BorrowsService,
   ) {}
 
-  async findAll(type?: string) {
-    const where = type ? { type } : {};
+  async findAll(type?: string, archived?: boolean) {
+    const where: any = { archived: archived === true ? true : { $ne: true } };
+    if (type) where.type = type;
     return this.personModel.find(where).sort({ name: 1 });
   }
 
@@ -29,13 +30,19 @@ export class PersonsService {
     return this.personModel.findByIdAndUpdate(id, dto, { new: true });
   }
 
+  // Soft delete: hide from lists/pickers but keep all linked records intact.
+  // Cannot archive while a borrow is still open (not fully returned).
+  async setArchived(id: string, archived: boolean) {
+    if (archived && await this.borrows.hasOpenBorrows(id)) {
+      throw new BadRequestException('Cannot archive: this person has an active borrow. Settle it (full repayment) first.');
+    }
+    return this.personModel.findByIdAndUpdate(id, { archived }, { new: true });
+  }
+
   async delete(id: string) {
     const oid = new Types.ObjectId(id);
-    const [txCount, borrowCount] = await Promise.all([
-      this.txnModel.countDocuments({ personId: oid }),
-      this.borrowModel.countDocuments({ personId: oid }),
-    ]);
-    if (txCount > 0 || borrowCount > 0) {
+    const txCount = await this.txnModel.countDocuments({ personId: oid });
+    if (txCount > 0) {
       throw new BadRequestException('Cannot delete person with linked transactions or borrows.');
     }
     await this.splitModel.deleteOne({ personId: oid });

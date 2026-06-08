@@ -1,5 +1,132 @@
-import { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { X, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ConfigIcon, getIconColor } from './configIcons';
+import { prettyDate, ymd, todayStr } from '../utils';
+
+// ── Custom calendar picker ────────────────────────────────────────────────────
+const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const MONTHS   = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function CalendarModal({ value, onSelect, onClose, max }: {
+  value: string; onSelect: (v: string) => void; onClose: () => void; max?: string;
+}) {
+  const init = value ? new Date(value + 'T00:00:00') : new Date();
+  const [view, setView] = useState({ y: init.getFullYear(), m: init.getMonth() });
+  const [mode, setMode] = useState<'days' | 'months' | 'years'>('days');
+
+  const maxD  = max ? new Date(max + 'T00:00:00') : null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const todayDisabled = maxD ? today > maxD : false;
+
+  const offset  = new Date(view.y, view.m, 1).getDay();
+  const numDays = new Date(view.y, view.m + 1, 0).getDate();
+  const cells: (number | null)[] = [...Array(offset).fill(null), ...Array.from({ length: numDays }, (_, i) => i + 1)];
+
+  // header title + prev/next behaviour depend on mode
+  const yearStart = Math.floor(view.y / 12) * 12;
+  const title = mode === 'days' ? `${MONTHS[view.m]} ${view.y}` : mode === 'months' ? `${view.y}` : `${yearStart} – ${yearStart + 11}`;
+  const cycleMode = () => setMode(m => (m === 'days' ? 'months' : m === 'months' ? 'years' : 'days'));
+  const step = (delta: number) => {
+    if (mode === 'days')   setView(v => { const d = new Date(v.y, v.m + delta, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
+    if (mode === 'months') setView(v => ({ ...v, y: v.y + delta }));
+    if (mode === 'years')  setView(v => ({ ...v, y: v.y + delta * 12 }));
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center px-6">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative bg-white rounded-3xl w-full max-w-[320px] shadow-2xl p-4">
+        {/* header */}
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={() => step(-1)} className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 active:bg-slate-200"><ChevronLeft size={17} /></button>
+          <button onClick={cycleMode} className="px-3 py-1 rounded-lg text-sm font-bold text-slate-800 active:bg-slate-100">{title}</button>
+          <button onClick={() => step(1)} className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 active:bg-slate-200"><ChevronRight size={17} /></button>
+        </div>
+
+        {mode === 'days' && (
+          <>
+            <div className="grid grid-cols-7 mb-1">
+              {WEEKDAYS.map((d, i) => <span key={i} className="text-[10px] font-bold text-slate-400 text-center py-1">{d}</span>)}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {cells.map((day, i) => {
+                if (day === null) return <span key={i} />;
+                const d = new Date(view.y, view.m, day);
+                const iso = ymd(d);
+                const selected = iso === value;
+                const isToday  = d.getTime() === today.getTime();
+                const disabled = maxD ? d > maxD : false;
+                return (
+                  <button key={i} disabled={disabled} onClick={() => { onSelect(iso); onClose(); }}
+                    className={`h-9 rounded-lg text-sm font-semibold flex items-center justify-center transition-colors ${
+                      selected ? 'bg-indigo-600 text-white' : isToday ? 'text-indigo-600 bg-indigo-50' : 'text-slate-700 active:bg-slate-100'
+                    } ${disabled ? 'opacity-30 pointer-events-none' : ''}`}>
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {mode === 'months' && (
+          <div className="grid grid-cols-3 gap-2">
+            {MONTHS.map((mo, i) => {
+              const active = i === view.m;
+              return (
+                <button key={mo} onClick={() => { setView(v => ({ ...v, m: i })); setMode('days'); }}
+                  className={`h-11 rounded-xl text-sm font-semibold transition-colors ${active ? 'bg-indigo-600 text-white' : 'text-slate-700 bg-slate-50 active:bg-slate-100'}`}>
+                  {mo}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {mode === 'years' && (
+          <div className="grid grid-cols-3 gap-2">
+            {Array.from({ length: 12 }, (_, i) => yearStart + i).map(yr => {
+              const active = yr === view.y;
+              return (
+                <button key={yr} onClick={() => { setView(v => ({ ...v, y: yr })); setMode('months'); }}
+                  className={`h-11 rounded-xl text-sm font-semibold transition-colors ${active ? 'bg-indigo-600 text-white' : 'text-slate-700 bg-slate-50 active:bg-slate-100'}`}>
+                  {yr}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100">
+          <button disabled={todayDisabled} onClick={() => { onSelect(todayStr()); onClose(); }}
+            className="flex-1 py-2 rounded-xl bg-slate-100 text-sm font-semibold text-slate-700 disabled:opacity-40 active:bg-slate-200">Today</button>
+          <button onClick={onClose} className="flex-1 py-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-500">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── DateField — compact trigger + custom calendar (no native OS picker) ───────
+export function DateField({ value, onChange, max }: {
+  value: string; onChange: (v: string) => void; max?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}
+        className="w-full h-12 flex items-center gap-2.5 bg-white rounded-xl px-3 border border-slate-200 active:bg-slate-50">
+        <span className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+          <Calendar size={15} className="text-indigo-500" />
+        </span>
+        <span className="flex-1 text-left text-sm font-semibold text-slate-800 truncate">{prettyDate(value)}</span>
+        <ChevronRight size={15} className="text-slate-300 shrink-0" />
+      </button>
+      {open && <CalendarModal value={value} onSelect={onChange} onClose={() => setOpen(false)} max={max} />}
+    </>
+  );
+}
 
 // ── Spinner ──────────────────────────────────────────────────────────────────
 export function Spinner() {
@@ -11,15 +138,18 @@ export function Spinner() {
 }
 
 // ── EmptyState ───────────────────────────────────────────────────────────────
+// `icon` accepts a lucide icon node (preferred) or a string/emoji (legacy).
 export function EmptyState({ icon, title, description, action }: {
-  icon: string;
+  icon: ReactNode;
   title: string;
   description?: string;
   action?: ReactNode;
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-6 text-center gap-3">
-      <span className="text-5xl">{icon}</span>
+      <div className="w-16 h-16 rounded-3xl bg-slate-100 flex items-center justify-center text-slate-400 text-4xl">
+        {icon}
+      </div>
       <div>
         <p className="text-base font-semibold text-slate-700">{title}</p>
         {description && <p className="text-sm text-slate-400 mt-1">{description}</p>}
@@ -87,14 +217,18 @@ export function BottomSheet({ title, onClose, children }: {
   children: ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-40 flex items-end">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-t-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 text-sm">✕</button>
+    <div className="fixed inset-0 z-40 flex flex-col justify-end items-center">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative bg-white rounded-t-3xl w-full max-w-md max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+        <div className="flex justify-center pt-2.5 pb-1 shrink-0">
+          <div className="w-9 h-1 rounded-full bg-slate-200" />
         </div>
-        <div className="p-5 flex flex-col gap-4">
+        <div className="flex items-center justify-between px-5 pb-3 pt-1 border-b border-slate-100 shrink-0">
+          <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-100 text-slate-500"><X size={15} strokeWidth={2.5} /></button>
+        </div>
+        <div className="p-5 pb-7 flex flex-col gap-4 overflow-y-auto"
+          style={{ paddingBottom: 'calc(1.75rem + env(safe-area-inset-bottom, 0px))' }}>
           {children}
         </div>
       </div>
@@ -113,7 +247,7 @@ export function PrimaryButton({ children, onClick, disabled, className = '' }: {
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`w-full py-4 bg-slate-900 text-white rounded-2xl text-[15px] font-semibold disabled:opacity-40 active:opacity-80 transition-opacity ${className}`}
+      className={`w-full py-4 bg-indigo-600 text-white rounded-2xl text-[15px] font-semibold disabled:opacity-40 active:opacity-80 transition-opacity ${className}`}
     >
       {children}
     </button>
@@ -182,10 +316,13 @@ export function Amount({ value, size = 'md', className = '' }: {
 }
 
 // ── IconCircle ────────────────────────────────────────────────────────────────
-export function IconCircle({ icon, color = 'bg-slate-100' }: { icon: string; color?: string }) {
+// `icon` is a config icon name (lucide) or legacy emoji. Colors itself from the
+// icon's palette; pass `color` to override the background.
+export function IconCircle({ icon, color }: { icon: string; color?: string }) {
+  const c = getIconColor(icon);
   return (
-    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shrink-0 ${color}`}>
-      {icon}
+    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${color ?? c.bg}`}>
+      <ConfigIcon name={icon} size={20} className={c.text} />
     </div>
   );
 }

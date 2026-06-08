@@ -1,6 +1,6 @@
 export type TransactionType = string; // dynamic — driven by TypeConfig keys
 
-export type Behavior = 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'LEND' | 'RECEIVE_BACK';
+export type Behavior = 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'LEND' | 'RECEIVE_BACK' | 'WRITEOFF' | 'INVEST' | 'DIVEST';
 
 export interface TypeConfig {
   key: string;
@@ -12,6 +12,7 @@ export interface TypeConfig {
   requiresPerson: boolean;   // person selection required
   personType: 'FAMILY' | 'FRIEND' | 'ANY';
   isBuiltin: boolean;
+  archived?: boolean;
 }
 
 export interface CategoryConfig {
@@ -19,6 +20,7 @@ export interface CategoryConfig {
   label: string;
   icon: string;
   isBuiltin: boolean;
+  archived?: boolean;
 }
 
 export interface AppConfig {
@@ -33,6 +35,7 @@ export interface Person {
   name: string;
   type: 'FRIEND' | 'FAMILY';
   phone: string | null;
+  archived?: boolean;
 }
 
 export interface Transaction {
@@ -46,6 +49,10 @@ export interface Transaction {
   note: string | null;
   createdAt: string;
   person: Person | null;
+  borrowId?: string | null;
+  interestExpected?: number;
+  settled?: boolean;
+  costBasis?: number;
 }
 
 export interface TransactionSummary {
@@ -54,6 +61,9 @@ export interface TransactionSummary {
   familyTransfers: number;
   borrowsGiven: number;
   borrowRecoveries: number;
+  investments: number;
+  investmentReturns: number;
+  costBasisReturned: number;
   realSavings: number;
   savingsRate: number;
   byType: Record<string, number>; // per-type totals for dynamic insights
@@ -103,4 +113,7 @@ export interface CreateTransactionDto {
   paymentMethod: PaymentMethod;
   personId?: string;
   note?: string;
+  borrowId?: string;          // repayment / interest → the lend txn it applies to
+  interestExpected?: number;  // BORROW_GIVEN only
+  costBasis?: number;         // INVESTMENT_RETURN only: original amount invested
 }

@@ -19,6 +19,7 @@
 //     PUT  /borrows/:id/settle    → POST ?path=borrows&id=:id&action=settle&method=PUT
 
 import axios, { type AxiosRequestConfig } from 'axios';
+import { getAccessToken } from '../auth/token';
 
 const API_URL: string =
   (import.meta.env.VITE_API_URL as string | undefined) ??
@@ -39,7 +40,16 @@ interface ApiClient {
 
 // ── NestJS / normal axios client ─────────────────────────────────────────────
 
-const axiosClient: ApiClient = axios.create({ baseURL: API_URL });
+const axiosInstance = axios.create({ baseURL: API_URL });
+
+// Attach the Auth0 access token to every request.
+axiosInstance.interceptors.request.use(async (config) => {
+  const token = await getAccessToken();
+  if (token) (config.headers as any).Authorization = `Bearer ${token}`;
+  return config;
+});
+
+const axiosClient: ApiClient = axiosInstance;
 
 // ── Google Apps Script client ─────────────────────────────────────────────────
 

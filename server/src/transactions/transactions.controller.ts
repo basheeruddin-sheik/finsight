@@ -13,6 +13,9 @@ export class TransactionsController {
     return this.service.getSummary(m);
   }
 
+  @Get('totals')
+  getTotals() { return this.service.getTotals(); }
+
   @Get()
   findAll(
     @Query('type') type?: string,

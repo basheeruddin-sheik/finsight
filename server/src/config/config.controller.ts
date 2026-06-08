@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Patch, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Patch, Put, Body, Param } from '@nestjs/common';
 import { ConfigService } from './config.service';
 
 @Controller('config')
@@ -27,6 +27,12 @@ export class ConfigController {
     return this.service.updateType(key, dto);
   }
 
+  @Put('types/:key/archive')
+  archiveType(@Param('key') key: string) { return this.service.setTypeArchived(key, true); }
+
+  @Put('types/:key/restore')
+  restoreType(@Param('key') key: string) { return this.service.setTypeArchived(key, false); }
+
   // ── Categories ─────────────────────────────────────────────────────────────
 
   @Post('categories')
@@ -41,4 +47,10 @@ export class ConfigController {
   updateCategory(@Param('key') key: string, @Body() dto: { label?: string; icon?: string }) {
     return this.service.updateCategory(key, dto);
   }
+
+  @Put('categories/:key/archive')
+  archiveCategory(@Param('key') key: string) { return this.service.setCategoryArchived(key, true); }
+
+  @Put('categories/:key/restore')
+  restoreCategory(@Param('key') key: string) { return this.service.setCategoryArchived(key, false); }
 }

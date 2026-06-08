@@ -1,138 +1,188 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Borrow, BorrowDocument } from '../schemas/borrow.schema';
-import { BorrowPayment, BorrowPaymentDocument } from '../schemas/borrow-payment.schema';
-import { CreateBorrowDto } from './dto/create-borrow.dto';
-import { CreatePaymentDto } from './dto/create-payment.dto';
+import { Model } from 'mongoose';
+import moment from 'moment';
+import { Transaction, TransactionDocument } from '../schemas/transaction.schema';
+import { Config, ConfigDocument } from '../schemas/config.schema';
 
-function calcInterest(principal: number, rate: number, startDate: Date): number {
-  const days = (Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24);
-  return principal * (rate / 100) * (days / 365);
-}
+const round = (n: number) => Math.round(n * 100) / 100;
+const toISO = (epoch: number | null | undefined) =>
+  epoch != null ? moment(epoch).toISOString() : null;
 
-function round(n: number) { return Math.round(n * 100) / 100; }
-
-function toRes(borrow: any) {
-  const b = borrow.toJSON ? borrow.toJSON() : borrow;
-  const payments = (b.payments ?? []).map((p: any) => ({
-    id: p.id ?? p._id?.toString(),
-    borrowId: b.id,
-    amount: p.amount,
-    date: p.date,
-    note: p.note ?? null,
-  }));
-  const totalPaid = payments.reduce((s: number, p: any) => s + p.amount, 0);
-  const interestOwed = calcInterest(b.principal, b.interestRate, new Date(b.startDate));
-  const totalOwed = b.principal + interestOwed - totalPaid;
-  const person = b.personId && typeof b.personId === 'object' && b.personId.name
-    ? { id: b.personId._id?.toString() ?? b.personId.id, name: b.personId.name, type: b.personId.type }
-    : null;
-  return {
-    id: b.id ?? b._id?.toString(),
-    personId: person ? person.id : b.personId?.toString(),
-    principal: b.principal,
-    interestRate: b.interestRate,
-    startDate: b.startDate,
-    status: b.status,
-    createdAt: b.createdAt,
-    person,
-    payments,
-    totalPaid: round(totalPaid),
-    interestOwed: round(interestOwed),
-    totalOwed: round(totalOwed),
-  };
-}
+// A borrow is a BORROW_GIVEN (behavior LEND) transaction. Repayments
+// (RECEIVE_BACK) and interest payments (INCOME) reference it via borrowId.
+// Everything below is DERIVED from transactions — no separate borrow store.
 
 @Injectable()
 export class BorrowsService {
   constructor(
-    @InjectModel(Borrow.name)        private borrowModel: Model<BorrowDocument>,
-    @InjectModel(BorrowPayment.name) private paymentModel: Model<BorrowPaymentDocument>,
+    @InjectModel(Transaction.name) private txn: Model<TransactionDocument>,
+    @InjectModel(Config.name)      private config: Model<ConfigDocument>,
   ) {}
 
-  async findAll(status?: string) {
-    const where = status ? { status } : {};
-    const docs = await this.borrowModel.find(where)
-      .populate('personId')
-      .populate({ path: 'payments', options: { sort: { date: -1 } } })
-      .sort({ startDate: 1 });
-    return docs.map(toRes);
+  private async behaviorMap() {
+    const types = await this.config.find({ configType: 'type' });
+    return new Map(types.map(t => [t.key, t.behavior]));
   }
 
-  async create(dto: CreateBorrowDto) {
-    const doc = await this.borrowModel.create({
-      personId: new Types.ObjectId(dto.personId),
-      principal: dto.principal,
-      interestRate: dto.interestRate ?? 0,
-      startDate: new Date(dto.startDate),
-      status: 'ACTIVE',
-    });
-    const populated = await doc.populate(['personId', 'payments']);
-    return toRes(populated);
-  }
+  // Build every derived borrow (optionally filtered to one person).
+  private async derive(personId?: string) {
+    const beh = await this.behaviorMap();
+    const all = await this.txn.find().populate('personId').sort({ date: 1 });
 
-  async addPayment(id: string, dto: CreatePaymentDto) {
-    const borrow = await this.borrowModel.findById(id);
-    if (!borrow) throw new NotFoundException('Borrow not found');
-    if (borrow.status === 'SETTLED') throw new BadRequestException('Cannot add payment to a settled borrow');
+    const isLend = (t: any) => beh.get(t.type) === 'LEND';
 
-    await this.paymentModel.create({
-      borrowId: new Types.ObjectId(id),
-      amount: dto.amount,
-      date: new Date(dto.date),
-      note: dto.note ?? undefined,
+    // index children (repayments / interest) by their borrowId
+    const childrenOf: Record<string, any[]> = {};
+    for (const t of all) {
+      if (t.borrowId) (childrenOf[t.borrowId.toString()] ??= []).push(t);
+    }
+
+    const lends = all.filter(isLend).filter(l => {
+      if (!personId) return true;
+      const pid = (l.personId as any)?._id?.toString() ?? l.personId?.toString();
+      return pid === personId;
     });
 
-    const payments = await this.paymentModel.find({ borrowId: new Types.ObjectId(id) });
-    const totalPaid = payments.reduce((s, p) => s + p.amount, 0);
-    const totalOwed = borrow.principal + calcInterest(borrow.principal, borrow.interestRate, new Date(borrow.startDate)) - totalPaid;
-    const newStatus = totalOwed <= 0 ? 'SETTLED' : 'PARTIALLY_RETURNED';
+    return lends.map(l => {
+      const j = l.toJSON() as any;
+      const id = j.id ?? l._id.toString();
+      const person = j.personId && j.personId.name
+        ? { id: j.personId._id?.toString() ?? j.personId.id, name: j.personId.name, type: j.personId.type }
+        : null;
+      const kids = (childrenOf[id] ?? []).map((c: any) => c.toJSON());
 
-    await this.borrowModel.findByIdAndUpdate(id, { status: newStatus });
-    const final = await this.borrowModel.findById(id)
-      .populate('personId')
-      .populate({ path: 'payments', options: { sort: { date: -1 } } });
-    return toRes(final!);
+      const repayments = kids.filter((c: any) => beh.get(c.type) === 'RECEIVE_BACK');
+      const interests  = kids.filter((c: any) => beh.get(c.type) === 'INCOME');
+      const writeoffs  = kids.filter((c: any) => beh.get(c.type) === 'WRITEOFF');
+      const principalPaid    = round(repayments.reduce((s: number, c: any) => s + c.amount, 0));
+      const interestPaid     = round(interests.reduce((s: number, c: any) => s + c.amount, 0));
+      const writeoffTotal    = round(writeoffs.reduce((s: number, c: any) => s + c.amount, 0));
+      const interestExpected = j.interestExpected ?? 0;
+
+      // A write-off closes the remaining principal (you've decided not to collect it).
+      const rawOutstanding  = round(j.amount - principalPaid - writeoffTotal);
+      const interestPending = round(interestExpected - interestPaid);
+      const status = j.settled || writeoffTotal > 0 || rawOutstanding <= 0
+        ? 'SETTLED'
+        : (principalPaid > 0 || interestPaid > 0 ? 'PARTIALLY_RETURNED' : 'ACTIVE');
+
+      // Audit entries: epoch numbers → ISO strings for the API.
+      const toAudit = (c: any, kind: string) => ({
+        id: c.id, kind, amount: c.amount,
+        date: toISO(c.date), createdAt: toISO(c.createdAt), note: c.note ?? null,
+      });
+      const audit = [
+        toAudit({ id, ...j }, 'given'),
+        ...repayments.map((c: any) => toAudit(c, 'repaid')),
+        ...interests.map((c: any)  => toAudit(c, 'interest')),
+        ...writeoffs.map((c: any)  => toAudit(c, 'writeoff')),
+      ].sort((a, b) => (b.createdAt ?? b.date ?? '').localeCompare(a.createdAt ?? a.date ?? ''));
+
+      // Written off = explicit write-off entries, plus legacy flag-only settles.
+      const writtenOff = round(writeoffTotal + (j.settled && rawOutstanding > 0 ? rawOutstanding : 0));
+
+      return {
+        id, personId: person?.id ?? null, person,
+        principal: j.amount, date: toISO(j.date), note: j.note ?? null,
+        interestExpected, settledFlag: !!j.settled,
+        principalPaid, interestPaid, interestPending,
+        outstanding: Math.max(rawOutstanding, 0),
+        overReturned: rawOutstanding < 0 ? round(-rawOutstanding) : 0,
+        writtenOff,
+        status, audit,
+      };
+    });
   }
 
-  async settle(id: string) {
-    const borrow = await this.borrowModel.findById(id);
-    if (!borrow) throw new NotFoundException('Borrow not found');
-    await this.borrowModel.findByIdAndUpdate(id, { status: 'SETTLED' });
-    const final = await this.borrowModel.findById(id)
-      .populate('personId')
-      .populate({ path: 'payments', options: { sort: { date: -1 } } });
-    return toRes(final!);
+  // Per-person groups for the overview list.
+  async findAll() {
+    const borrows = await this.derive();
+    const groups: Record<string, any> = {};
+    for (const b of borrows) {
+      if (!b.person) continue;
+      const g = (groups[b.person.id] ??= {
+        person: b.person, borrows: [] as any[],
+        totalGiven: 0, totalRepaid: 0, interestPaid: 0, outstanding: 0, interestPending: 0,
+      });
+      g.borrows.push(b);
+      g.totalGiven      += b.principal;
+      g.totalRepaid     += b.principalPaid;
+      g.interestPaid    += b.interestPaid;
+      // Settled borrows (incl. manual settle / write-off) are closed — exclude
+      // their leftover from the live position, matching the summary card.
+      if (b.status !== 'SETTLED') {
+        g.outstanding     += b.outstanding;
+        g.interestPending += Math.max(b.interestPending, 0);
+      }
+    }
+    return Object.values(groups)
+      .map((g: any) => ({
+        ...g,
+        totalGiven: round(g.totalGiven), totalRepaid: round(g.totalRepaid),
+        interestPaid: round(g.interestPaid), outstanding: round(g.outstanding),
+        interestPending: round(g.interestPending),
+      }))
+      .sort((a: any, b: any) => b.outstanding - a.outstanding);
   }
 
-  async delete(id: string) {
-    const borrow = await this.borrowModel.findById(id);
-    if (!borrow) throw new NotFoundException('Borrow not found');
-    await this.paymentModel.deleteMany({ borrowId: new Types.ObjectId(id) });
-    await this.borrowModel.findByIdAndDelete(id);
-    return { deleted: true };
+  async findByPerson(personId: string) {
+    return this.derive(personId);
   }
 
   async getSummary() {
-    const borrows = await this.borrowModel.find();
-    const allPayments = await this.paymentModel.find();
-
-    let totalLent = 0, totalRecovered = 0, totalOutstanding = 0, activeCount = 0;
+    const borrows = await this.derive();
+    let totalLent = 0, totalRecovered = 0, totalOutstanding = 0, interestPending = 0, activeCount = 0;
     for (const b of borrows) {
       totalLent += b.principal;
-      const paid = allPayments.filter(p => p.borrowId.equals(b._id)).reduce((s, p) => s + p.amount, 0);
-      totalRecovered += paid;
-      if (b.status !== 'SETTLED') {
-        totalOutstanding += b.principal + calcInterest(b.principal, b.interestRate, new Date(b.startDate)) - paid;
-        activeCount++;
-      }
+      totalRecovered += b.principalPaid;
+      if (b.status !== 'SETTLED') { totalOutstanding += b.outstanding; interestPending += Math.max(b.interestPending, 0); activeCount++; }
     }
     return {
-      totalLent: round(totalLent),
-      totalRecovered: round(totalRecovered),
-      totalOutstanding: round(totalOutstanding),
-      activeCount,
+      totalLent: round(totalLent), totalRecovered: round(totalRecovered),
+      totalOutstanding: round(totalOutstanding), interestPending: round(interestPending), activeCount,
     };
+  }
+
+  // Used by the person-archive guard.
+  async hasOpenBorrows(personId: string) {
+    const borrows = await this.derive(personId);
+    return borrows.some(b => b.status !== 'SETTLED');
+  }
+
+  // Settling a loan that still has money out records a write-off transaction
+  // for the unpaid amount (a loss, NOT a recovery) so it shows in the history.
+  async settle(id: string) {
+    const lend = await this.txn.findById(id);
+    if (!lend) throw new NotFoundException('Borrow not found');
+
+    const beh  = await this.behaviorMap();
+    const kids = await this.txn.find({ borrowId: id });
+    const paidOrWritten = kids
+      .filter(c => beh.get(c.type) === 'RECEIVE_BACK' || beh.get(c.type) === 'WRITEOFF')
+      .reduce((s, c) => s + c.amount, 0);
+    const outstanding = round((lend as any).amount - paidOrWritten);
+
+    if (outstanding > 0) {
+      await this.txn.create({
+        type: 'BORROW_WRITEOFF',
+        amount: outstanding,
+        date: moment.utc().startOf('day').valueOf(),  // UTC midnight, consistent with all other txns
+        paymentMethod: '—',
+        personId: (lend as any).personId ?? null,
+        borrowId: lend._id,
+        note: 'Settled by myself — written off',
+      });
+    }
+    await this.txn.findByIdAndUpdate(id, { settled: true });
+    return { settled: true, writtenOff: Math.max(outstanding, 0) };
+  }
+
+  // Reopening removes any write-off entries and clears the flag.
+  async unsettle(id: string) {
+    const doc = await this.txn.findByIdAndUpdate(id, { settled: false });
+    if (!doc) throw new NotFoundException('Borrow not found');
+    await this.txn.deleteMany({ borrowId: id, type: 'BORROW_WRITEOFF' });
+    return { settled: false };
   }
 }
