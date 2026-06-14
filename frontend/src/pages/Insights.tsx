@@ -5,16 +5,15 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ComposedChart,
 } from 'recharts';
-import { getSavingsRateTrend, getMonthlyBreakdown, getMoneyOutside } from '../api/reports';
-import { getTotals } from '../api/transactions';
-import type { SavingsRateMonth, MonthlyBreakdown, MoneyOutside, PaymentMethod } from '../types';
+import { getSavingsRateTrend, getMonthlyBreakdown, getNetWorth } from '../api/reports';
+import type { SavingsRateMonth, MonthlyBreakdown, NetWorth, PaymentMethod } from '../types';
 import { formatAmount, currentMonth, PAYMENT_LABELS } from '../utils';
 import { useConfig } from '../context/ConfigContext';
 import { Spinner } from '../components/ui';
 import { ConfigIcon, getIconColor } from '../components/configIcons';
 import {
   Target, HandCoins, Users, ChevronRight,
-  TrendingUp, TrendingDown, PiggyBank, Wallet,
+  TrendingUp, TrendingDown, Wallet,
 } from 'lucide-react';
 
 // ── Colours ───────────────────────────────────────────────────────────────────
@@ -80,13 +79,16 @@ function periodTitle(period: Period, from: string, to: string): string {
 function mergeBreakdowns(list: MonthlyBreakdown[]): MonthlyBreakdown {
   const cats: Record<string, number> = {};
   const pays: Record<string, number> = {};
+  const invs: Record<string, number> = {};
   for (const bd of list) {
-    for (const c of bd.categories)     cats[c.category] = (cats[c.category] ?? 0) + c.total;
-    for (const p of bd.paymentMethods) pays[p.method]   = (pays[p.method]   ?? 0) + p.total;
+    for (const c of bd.categories)      cats[c.category] = (cats[c.category] ?? 0) + c.total;
+    for (const p of bd.paymentMethods)  pays[p.method]   = (pays[p.method]   ?? 0) + p.total;
+    for (const i of bd.investments ?? []) invs[i.category] = (invs[i.category] ?? 0) + i.total;
   }
   const categories     = Object.entries(cats).map(([category, total]) => ({ category, total })).sort((a, b) => b.total - a.total);
   const paymentMethods = Object.entries(pays).map(([method,   total]) => ({ method,   total })).sort((a, b) => b.total - a.total);
-  return { categories, paymentMethods, topCategories: categories.slice(0, 3) };
+  const investments    = Object.entries(invs).map(([category, total]) => ({ category, total })).sort((a, b) => b.total - a.total);
+  return { categories, paymentMethods, topCategories: categories.slice(0, 3), investments };
 }
 
 // ── Custom tooltip ────────────────────────────────────────────────────────────
@@ -136,12 +138,12 @@ function StatPill({ label, value, sub, color, bg, Icon }: {
 }) {
   return (
     <div className={`rounded-2xl p-3 flex flex-col gap-1 ${bg}`}>
-      <div className="flex items-center gap-1.5">
-        <Icon size={13} className={color} strokeWidth={2.5} />
-        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">{label}</span>
+      <div className="flex items-center gap-1">
+        <Icon size={12} className={color} strokeWidth={2.5} />
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide leading-none truncate">{label}</span>
       </div>
-      <p className={`text-base font-bold leading-tight ${color}`}>{formatAmount(value)}</p>
-      {sub && <p className="text-[9px] text-slate-400 leading-none">{sub}</p>}
+      <p className={`text-sm font-bold leading-tight truncate ${color}`}>{formatAmount(value)}</p>
+      {sub && <p className="text-[10px] text-slate-400 leading-none truncate">{sub}</p>}
     </div>
   );
 }
@@ -192,8 +194,7 @@ export default function Insights() {
   // Data
   const [fullTrend,     setFullTrend]     = useState<SavingsRateMonth[]>([]);
   const [breakdown,     setBreakdown]     = useState<MonthlyBreakdown | null>(null);
-  const [outside,       setOutside]       = useState<MoneyOutside | null>(null);
-  const [totals,        setTotals]        = useState<{ totalSavings: number; totalInvested: number } | null>(null);
+  const [netWorth,      setNetWorth]      = useState<NetWorth | null>(null);
   const [baseLoading,   setBaseLoading]   = useState(true);
   const [periodLoading, setPeriodLoading] = useState(false);
 
@@ -201,8 +202,8 @@ export default function Insights() {
 
   // Load base data (trend + portfolio) once
   useEffect(() => {
-    Promise.all([getSavingsRateTrend(12), getMoneyOutside(), getTotals()])
-      .then(([t, o, tot]) => { setFullTrend(t); setOutside(o); setTotals(tot); })
+    Promise.all([getSavingsRateTrend(36), getNetWorth()])
+      .then(([t, nw]) => { setFullTrend(t); setNetWorth(nw); })
       .finally(() => setBaseLoading(false));
   }, []);
 
@@ -249,7 +250,7 @@ export default function Insights() {
       <AppHeader />
 
       {/* ── Sticky control band ─────────────────────────────────────────── */}
-      <div className="bg-white border-b border-slate-100 sticky top-[53px] z-10">
+      <div className="bg-white border-b border-slate-100 sticky z-10" style={{ top: 'calc(53px + env(safe-area-inset-top, 0px))' }}>
 
         {/* Period chips */}
         <div className="flex items-center gap-2 px-4 pt-3 pb-2 overflow-x-auto scrollbar-none">
@@ -321,6 +322,66 @@ export default function Insights() {
               />
             </div>
 
+            {/* Where the saved money went — splits "Saved" into cash + each asset */}
+            {aggSavings > 0 && breakdown && breakdown.investments.length > 0 && (() => {
+              const netInvested = breakdown.investments.reduce((s, i) => s + i.total, 0);
+              const cashKept    = aggSavings - netInvested;
+              const rows = [
+                { key: 'CASH', label: 'Kept as cash', amount: cashKept, color: '#6366f1',
+                  icon: <Wallet size={14} className="text-indigo-500" strokeWidth={2.5} /> },
+                ...breakdown.investments.map((i, idx) => ({
+                  key: i.category,
+                  label: getCategoryLabel(i.category),
+                  amount: i.total,
+                  color: PIE[idx % PIE.length],
+                  icon: <ConfigIcon name={getCategoryIcon(i.category)} size={14} className={getIconColor(getCategoryIcon(i.category)).text} />,
+                })),
+              ].filter(r => Math.abs(r.amount) >= 1);
+              return (
+                <Card title={`Where Your Saved Money Went · ${title}`}>
+                  <p className="text-[11px] text-slate-400 mb-3 -mt-1">
+                    Of the {formatAmount(aggSavings)} you saved, here's where it went
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    {rows.map(r => {
+                      const share = Math.round((r.amount / aggSavings) * 100);
+                      const neg   = r.amount < 0;
+                      return (
+                        <div key={r.key}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="flex items-center gap-2 min-w-0">
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color }} />
+                              {r.icon}
+                              <span className="text-sm font-semibold text-slate-700 truncate">{r.label}</span>
+                              {neg && <span className="text-[9px] font-bold text-rose-400 uppercase">sold</span>}
+                            </span>
+                            <span className="flex items-center gap-2 shrink-0 ml-2">
+                              <span className="text-xs text-slate-400">{share}%</span>
+                              <span className={`text-sm font-bold ${neg ? 'text-rose-500' : 'text-slate-800'}`}>
+                                {neg ? '-' : ''}{formatAmount(Math.abs(r.amount))}
+                              </span>
+                            </span>
+                          </div>
+                          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full"
+                              style={{ width: `${Math.min(Math.max(Math.abs(share), 2), 100)}%`, background: neg ? '#fda4af' : r.color }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="border-t border-slate-100 pt-2.5 flex items-center justify-between">
+                      <span className="text-sm font-bold text-slate-700">Total saved</span>
+                      <span className="text-sm font-bold text-slate-900">{formatAmount(aggSavings)}</span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-3">
+                    Invested money still belongs to you — it just moved from cash into the market.
+                    {rows.some(r => r.amount < 0) && ' A “sold” row means you withdrew more than you added this period (cash came back) — it’s not a loss.'}
+                  </p>
+                </Card>
+              );
+            })()}
+
             {/* Income vs Expenses grouped bars */}
             <Card title={`Income vs Expenses · ${title}`}>
               {trendData.length === 0 ? <Empty /> : (
@@ -390,16 +451,16 @@ export default function Insights() {
                     const pct    = Math.min((Math.abs(m.realSavings) / maxAbs) * 100, 100);
                     return (
                       <div key={m.month} className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-slate-500 w-12 shrink-0">{fmtM(m.month)}</span>
-                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <span className="text-xs font-semibold text-slate-500 w-11 shrink-0">{fmtM(m.month)}</span>
+                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden min-w-0">
                           <div
                             className={`h-full rounded-full ${pos ? 'bg-indigo-500' : 'bg-rose-400'}`}
                             style={{ width: `${pct}%` }} />
                         </div>
-                        <span className={`text-xs font-bold w-20 text-right shrink-0 ${pos ? 'text-emerald-600' : 'text-rose-500'}`}>
+                        <span className={`text-xs font-bold w-18 text-right shrink-0 ${pos ? 'text-emerald-600' : 'text-rose-500'}`}>
                           {pos ? '+' : ''}{formatAmount(m.realSavings)}
                         </span>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full w-10 text-center shrink-0 ${
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full w-9 text-center shrink-0 ${
                           pos ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'
                         }`}>
                           {m.savingsRate}%
@@ -531,82 +592,151 @@ export default function Insights() {
         )}
 
         {/* ══════════════ PORTFOLIO ══════════════════════════════════════════ */}
-        {tab === 'portfolio' && (
+        {tab === 'portfolio' && netWorth && (() => {
+          // Build the full, non-overlapping list of wealth verticals.
+          // These provably sum to netWorth (cash + investments + receivables).
+          const holdings: { key: string; label: string; amount: number; color: string; icon: React.ReactNode }[] = [
+            { key: 'CASH', label: 'Cash & Savings', amount: netWorth.cash, color: '#10b981',
+              icon: <Wallet size={14} className="text-emerald-500" strokeWidth={2.5} /> },
+            ...netWorth.investments.map((inv, i) => ({
+              key: inv.category,
+              label: getCategoryLabel(inv.category),
+              amount: inv.amount,
+              color: PIE[i % PIE.length],
+              icon: <ConfigIcon name={getCategoryIcon(inv.category)} size={14} className={getIconColor(getCategoryIcon(inv.category)).text} />,
+            })),
+            { key: 'BORROWS', label: 'Borrows', amount: netWorth.borrowsOutstanding, color: '#f59e0b',
+              icon: <HandCoins size={14} className="text-amber-500" strokeWidth={2.5} /> },
+            { key: 'SPLITS', label: netWorth.splitsNet < 0 ? 'Splits (you owe)' : 'Splits', amount: netWorth.splitsNet, color: '#3b82f6',
+              icon: <Users size={14} className="text-blue-500" strokeWidth={2.5} /> },
+          ].filter(h => Math.abs(h.amount) >= 1);
+
+          // Hero composition (3-way): liquid / invested / receivable.
+          const receivables = netWorth.borrowsOutstanding + netWorth.splitsNet;
+          const liquidPos   = Math.max(netWorth.cash, 0);
+          const compBase    = liquidPos + netWorth.investmentsTotal + receivables || 1;
+          const seg = [
+            { label: 'Cash',        value: liquidPos,                   color: '#10b981' },
+            { label: 'Investments', value: netWorth.investmentsTotal,   color: '#f59e0b' },
+            { label: 'Receivable',  value: receivables,                 color: '#6366f1' },
+          ].filter(s => s.value > 0);
+
+          const denom = netWorth.netWorth || 1;
+          const topInvest = netWorth.investments[0];
+          const concentration = topInvest && netWorth.investmentsTotal > 0
+            ? Math.round((topInvest.amount / netWorth.investmentsTotal) * 100) : 0;
+
+          return (
           <>
-            {totals && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl p-4 flex flex-col gap-1">
-                  <div className="flex items-center gap-1.5">
-                    <PiggyBank size={13} className="text-indigo-200" strokeWidth={2.5} />
-                    <span className="text-[9px] font-bold text-indigo-200 uppercase tracking-widest">Total Saved</span>
-                  </div>
-                  <p className="text-2xl font-bold text-white leading-none">{formatAmount(totals.totalSavings)}</p>
-                  <p className="text-[10px] text-indigo-200">All-time net</p>
-                </div>
-                <div className="bg-gradient-to-br from-amber-400 to-amber-500 rounded-2xl p-4 flex flex-col gap-1">
-                  <div className="flex items-center gap-1.5">
-                    <TrendingUp size={13} className="text-amber-100" strokeWidth={2.5} />
-                    <span className="text-[9px] font-bold text-amber-100 uppercase tracking-widest">In Market</span>
-                  </div>
-                  <p className="text-2xl font-bold text-white leading-none">{formatAmount(totals.totalInvested)}</p>
-                  <p className="text-[10px] text-amber-100">At cost basis</p>
-                </div>
+            {/* ── Net worth hero ── */}
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Total Net Worth</p>
+              <p className="text-3xl font-bold text-white mb-4">{formatAmount(netWorth.netWorth)}</p>
+
+              {/* Composition bar */}
+              <div className="h-2.5 rounded-full overflow-hidden flex bg-white/5 mb-2.5">
+                {seg.map(s => (
+                  <div key={s.label} style={{ width: `${(s.value / compBase) * 100}%`, background: s.color }} />
+                ))}
               </div>
-            )}
-
-            {totals && (totals.totalSavings + totals.totalInvested) > 0 && (
-              <Card title="Wealth Allocation · All-time">
-                <div className="flex flex-col gap-3">
-                  <div className="h-4 rounded-full bg-slate-100 overflow-hidden flex">
-                    {totals.totalSavings > 0 && (
-                      <div className="h-full bg-indigo-500"
-                        style={{ width: `${(totals.totalSavings / (totals.totalSavings + totals.totalInvested)) * 100}%` }} />
-                    )}
-                    {totals.totalInvested > 0 && (
-                      <div className="h-full bg-amber-400"
-                        style={{ width: `${(totals.totalInvested / (totals.totalSavings + totals.totalInvested)) * 100}%` }} />
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { color: '#6366f1', label: 'Liquid savings',    value: totals.totalSavings,   total: totals.totalSavings + totals.totalInvested },
-                      { color: '#f59e0b', label: 'In market (cost)', value: totals.totalInvested, total: totals.totalSavings + totals.totalInvested },
-                    ].map(item => (
-                      <div key={item.label} className="flex flex-col gap-0.5">
-                        <Dot color={item.color} label={item.label} />
-                        <p className="text-sm font-bold text-slate-800 ml-3.5">{formatAmount(item.value)}</p>
-                        <p className="text-[10px] text-slate-400 ml-3.5">
-                          {Math.round((item.value / item.total) * 100)}% of wealth
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </Card>
-            )}
-
-            <Card title="Money Outside">
-              <div className="flex flex-col gap-3">
-                {[
-                  { Icon: HandCoins, label: 'Borrows outstanding', value: outside?.borrowsOutstanding ?? 0, color: 'text-amber-600', bg: 'bg-amber-50', iconC: 'text-amber-500' },
-                  { Icon: Users,     label: 'Friends owe you',     value: outside?.splitsOwed        ?? 0, color: 'text-blue-600',  bg: 'bg-blue-50',  iconC: 'text-blue-500'  },
-                ].map(row => (
-                  <div key={row.label} className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600 flex items-center gap-2">
-                      <div className={`w-7 h-7 rounded-xl ${row.bg} flex items-center justify-center shrink-0`}>
-                        <row.Icon size={14} className={row.iconC} strokeWidth={2} />
-                      </div>
-                      {row.label}
-                    </span>
-                    <span className={`text-sm font-bold ${row.color}`}>{formatAmount(row.value)}</span>
+              {/* Composition legend */}
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {seg.map(s => (
+                  <div key={s.label} className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
+                    <span className="text-[10px] text-slate-300">{s.label}</span>
+                    <span className="text-[10px] font-bold text-white">{formatAmount(s.value)}</span>
                   </div>
                 ))}
-                <div className="border-t border-slate-100 pt-3 flex items-center justify-between">
-                  <span className="text-sm font-bold text-slate-800">Total outside</span>
-                  <span className="text-base font-bold text-slate-900">{formatAmount(outside?.grandTotal ?? 0)}</span>
+              </div>
+
+              {netWorth.cash < 0 && (
+                <p className="text-[10px] text-rose-300 bg-rose-500/10 rounded-lg px-3 py-1.5 mt-3">
+                  Cash is negative — you've invested or lent more than recorded income. Add your opening balance in Setup to fix this.
+                </p>
+              )}
+            </div>
+
+            {/* ── All holdings breakdown ── */}
+            <Card title="Where Your Money Is">
+              <div className="flex flex-col gap-3.5">
+                {holdings.map(h => {
+                  const neg   = h.amount < 0;
+                  const share = Math.round((h.amount / denom) * 100);
+                  return (
+                    <div key={h.key}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: neg ? '#fda4af' : h.color }} />
+                          {h.icon}
+                          <span className="text-sm font-semibold text-slate-700 truncate">{h.label}</span>
+                        </span>
+                        <span className="flex items-center gap-2 shrink-0 ml-2">
+                          <span className="text-xs text-slate-400">{share}%</span>
+                          <span className={`text-sm font-bold ${neg ? 'text-rose-500' : 'text-slate-800'}`}>
+                            {neg ? '-' : ''}{formatAmount(Math.abs(h.amount))}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(Math.max(Math.abs(share), 2), 100)}%`, background: neg ? '#fda4af' : h.color }} />
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="border-t border-slate-100 pt-2.5 flex items-center justify-between">
+                  <span className="text-sm font-bold text-slate-700">Total Net Worth</span>
+                  <span className="text-sm font-bold text-slate-900">{formatAmount(netWorth.netWorth)}</span>
                 </div>
               </div>
+
+              {concentration > 60 && (
+                <p className="text-[10px] text-amber-600 bg-amber-50 rounded-lg px-3 py-1.5 mt-3">
+                  {concentration}% of investments are in {getCategoryLabel(topInvest.category)} — consider diversifying
+                </p>
+              )}
             </Card>
+
+            {/* ── Realized gains (only once something has been sold) ── */}
+            {netWorth.salesProceeds > 0 && (() => {
+              const gain = netWorth.realizedGains;
+              const pct  = netWorth.salesCost > 0 ? Math.round((gain / netWorth.salesCost) * 100) : 0;
+              const up   = gain >= 0;
+              return (
+                <Card title="Realized Gains · All-time">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${up ? 'bg-emerald-50' : 'bg-rose-50'}`}>
+                        {up ? <TrendingUp className="text-emerald-500" size={22} strokeWidth={2.5} />
+                            : <TrendingDown className="text-rose-500" size={22} strokeWidth={2.5} />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className={`text-xl font-bold leading-none ${up ? 'text-emerald-600' : 'text-rose-500'}`}>
+                          {up ? '+' : '-'}{formatAmount(Math.abs(gain))}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-1">Profit booked on investments sold</p>
+                      </div>
+                    </div>
+                    <div className={`px-2.5 py-1 rounded-lg text-xs font-bold shrink-0 ${up ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'}`}>
+                      {up ? '+' : ''}{pct}%
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    <div className="bg-slate-50 rounded-xl px-3 py-2">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Sold for</p>
+                      <p className="text-sm font-bold text-slate-800 mt-0.5">{formatAmount(netWorth.salesProceeds)}</p>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl px-3 py-2">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Original cost</p>
+                      <p className="text-sm font-bold text-slate-800 mt-0.5">{formatAmount(netWorth.salesCost)}</p>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-3">
+                    Gain/loss on holdings you've already sold — separate from cash flow. Unsold holdings aren't valued here.
+                  </p>
+                </Card>
+              );
+            })()}
 
             <button onClick={() => navigate('/budgets')}
               className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center gap-4 text-left w-full active:opacity-70">
@@ -620,7 +750,8 @@ export default function Insights() {
               <ChevronRight className="text-slate-300 shrink-0" size={20} />
             </button>
           </>
-        )}
+          );
+        })()}
 
       </div>
     </div>
@@ -629,7 +760,7 @@ export default function Insights() {
 
 function AppHeader() {
   return (
-    <div className="bg-white border-b border-slate-100 px-4 py-3.5 sticky top-0 z-20">
+    <div className="bg-white border-b border-slate-100 px-4 py-3.5 sticky top-0 z-20" style={{ paddingTop: 'calc(14px + env(safe-area-inset-top, 0px))' }}>
       <h1 className="text-base font-bold text-slate-900">Insights</h1>
     </div>
   );

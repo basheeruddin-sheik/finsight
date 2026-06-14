@@ -91,7 +91,7 @@ export default function Transactions() {
   return (
     <div className="min-h-screen bg-slate-50 pb-28">
       {/* Header */}
-      <div className="bg-white border-b border-slate-100 sticky top-0 z-10">
+      <div className="bg-white border-b border-slate-100 sticky top-0 z-10" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="px-4 py-3 flex items-center justify-between">
           <h1 className="text-base font-semibold text-slate-900">Activity</h1>
           <button onClick={() => setShowFilters(true)}
@@ -158,7 +158,7 @@ export default function Transactions() {
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                 {g.items.map((t, i) => {
                   const behavior   = getBehavior(t.type);
-                  const isPositive = behavior === 'INCOME' || behavior === 'RECEIVE_BACK' || behavior === 'DIVEST';
+                  const isPositive = behavior === 'INCOME' || behavior === 'RECEIVE_BACK' || behavior === 'DIVEST' || behavior === 'SPLIT_COLLECT';
                   const icon     = t.category ? getCategoryIcon(t.category) : getTypeIcon(t.type);
                   const typeLbl  = t.category ? getCategoryLabel(t.category) : getTypeLabel(t.type);
                   const personName = t.person?.name;

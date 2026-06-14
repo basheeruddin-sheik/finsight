@@ -136,7 +136,7 @@ export default function AddTransaction() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-100 sticky top-0 z-10">
+      <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-100 sticky top-0 z-10" style={{ paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))' }}>
         <button onClick={() => navigate(-1)}
           className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-600">
           <ChevronLeft size={18} strokeWidth={2.5} />
@@ -161,7 +161,10 @@ export default function AddTransaction() {
               value={amount}
               onChange={e => handleAmount(e.target.value)}
               size={Math.max((amount || '0').length, 1)}
-              className={`text-5xl font-bold bg-transparent outline-none transition-colors ${amtColor} placeholder:text-slate-300`}
+              // Inline font-size beats the global `input { font-size:16px }` zoom-guard,
+              // which otherwise shrinks this hero input to 16px.
+              style={{ fontSize: '3rem', lineHeight: 1 }}
+              className={`font-bold bg-transparent outline-none transition-colors ${amtColor} placeholder:text-slate-300`}
             />
           </div>
         </div>

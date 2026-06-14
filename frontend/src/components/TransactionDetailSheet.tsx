@@ -45,7 +45,7 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
   const [personId,  setPersonId]  = useState(t.personId ?? '');
 
   const behavior   = getBehavior(t.type);
-  const isPositive = behavior === 'INCOME' || behavior === 'RECEIVE_BACK' || behavior === 'DIVEST';
+  const isPositive = behavior === 'INCOME' || behavior === 'RECEIVE_BACK' || behavior === 'DIVEST' || behavior === 'SPLIT_COLLECT';
   const icon       = t.category ? getCategoryIcon(t.category) : getTypeIcon(t.type);
 
   const typeConf        = config.types.find(x => x.key === type);

@@ -22,7 +22,7 @@ export default function App() {
       <ThemeProvider>
       <RequireAuth>
       <ConfigProvider>
-        <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           <Routes>
             <Route path="/"            element={<Home />} />
             <Route path="/add"         element={<AddTransaction />} />

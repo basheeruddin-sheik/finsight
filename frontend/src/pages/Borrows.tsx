@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { getBorrowGroups, getBorrowSummary, settleBorrow, unsettleBorrow, type PersonBorrows, type Borrow, type BorrowAudit, type BorrowSummary } from '../api/borrows';
 import { formatAmount, formatDate, formatTime } from '../utils';
 import { Spinner, EmptyState, BottomSheet, ConfirmModal } from '../components/ui';
+import PeopleTabs from '../components/PeopleTabs';
 import { HandCoins, Plus, ArrowDownLeft, ArrowUpRight, Percent, Check, RotateCcw, Ban, BookOpen, X, type LucideIcon } from 'lucide-react';
 
 const latestActivity = (b: Borrow) => Math.max(...b.audit.map(a => new Date(a.createdAt ?? a.date).getTime()));
@@ -307,9 +308,7 @@ export default function Borrows() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28">
-      <div className="bg-white border-b border-slate-100 px-4 py-3 sticky top-0 z-10">
-        <h1 className="text-base font-semibold text-slate-900">Borrows</h1>
-      </div>
+      <PeopleTabs active="borrows" />
 
       {/* Summary */}
       {summary && (

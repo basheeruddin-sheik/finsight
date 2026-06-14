@@ -12,6 +12,11 @@ html              { background: #f1f5f9; }
 html.dark         { background: #020617; }
 body              { transition: background-color .25s ease; }
 
+/* Prevent iOS/Android PWA viewport zoom on input focus.
+   Browsers auto-zoom when focused element font-size < 16px.
+   Unlayered rule wins over Tailwind @layer utilities. */
+input, select, textarea { font-size: 16px; }
+
 /* Pointer cursor on all interactive elements */
 button:not(:disabled), a, label, summary, [role="button"] { cursor: pointer; }
 button:disabled { cursor: not-allowed; }

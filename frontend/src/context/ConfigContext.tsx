@@ -63,7 +63,9 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
   useEffect(() => { reload(); }, []);
 
   // WRITEOFF is a system behavior (created when settling a loan) — never a manual pick.
-  const activeTypes      = config.types.filter(t => !t.archived && t.behavior !== 'WRITEOFF');
+  // Hide system/managed types from the Add-transaction picker: write-offs and
+  // splits (splits are created from the Splits page, not added manually here).
+  const activeTypes      = config.types.filter(t => !t.archived && t.behavior !== 'WRITEOFF' && !t.behavior.startsWith('SPLIT_'));
   const activeCategories = config.categories.filter(c => !c.archived);
   const getTypeConfig    = (key: string) => config.types.find(t => t.key === key);
   const getCategoryLabel = (key: string) => config.categories.find(c => c.key === key)?.label ?? key;

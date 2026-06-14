@@ -1,5 +1,5 @@
 import client from './client';
-import type { MonthlyBreakdown, CategoryTrend, SavingsRateMonth, MoneyOutside } from '../types';
+import type { MonthlyBreakdown, CategoryTrend, SavingsRateMonth, MoneyOutside, NetWorth } from '../types';
 
 export const getMonthlyBreakdown = (month: string): Promise<MonthlyBreakdown> =>
   client.get('/reports/monthly', { params: { month } }).then(r => r.data);
@@ -12,3 +12,6 @@ export const getSavingsRateTrend = (months = 6): Promise<SavingsRateMonth[]> =>
 
 export const getMoneyOutside = (): Promise<MoneyOutside> =>
   client.get('/reports/money-outside').then(r => r.data);
+
+export const getNetWorth = (): Promise<NetWorth> =>
+  client.get('/reports/net-worth').then(r => r.data);

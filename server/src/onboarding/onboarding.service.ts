@@ -1,12 +1,14 @@
 import { Injectable, OnApplicationBootstrap, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
+import { createHash } from 'crypto';
 import moment from 'moment';
 import { Config, ConfigDocument } from '../schemas/config.schema';
 import { Transaction, TransactionDocument } from '../schemas/transaction.schema';
 import { Person, PersonDocument } from '../schemas/person.schema';
 import { Budget, BudgetDocument } from '../schemas/budget.schema';
 import { SplitBalance, SplitBalanceDocument } from '../schemas/split-balance.schema';
+import { SplitEntry, SplitEntryDocument } from '../schemas/split-entry.schema';
 import { RequestContext } from '../context/request-context';
 import { DEFAULT_TYPES, DEFAULT_CATEGORIES } from '../config/config.defaults';
 
@@ -21,16 +23,102 @@ export class OnboardingService implements OnApplicationBootstrap {
     @InjectModel(Person.name)       private person: Model<PersonDocument>,
     @InjectModel(Budget.name)       private budget: Model<BudgetDocument>,
     @InjectModel(SplitBalance.name) private split: Model<SplitBalanceDocument>,
+    @InjectModel(SplitEntry.name)   private splitEntry: Model<SplitEntryDocument>,
   ) {}
 
   // Rebuild indexes so the userId-compound unique indexes replace the old ones.
   async onApplicationBootstrap() {
     await this.migrateToEpoch();
     await this.migrateOpeningBalanceDates();
-    for (const m of [this.config, this.txn, this.person, this.budget, this.split]) {
+    await this.migrateSplitBalancesToEntries();
+    await this.migrateSplitEntriesToTransactions();
+    for (const m of [this.config, this.txn, this.person, this.budget, this.split, this.splitEntry]) {
       try { await m.syncIndexes(); }
       catch (e) { this.logger.warn(`syncIndexes(${m.modelName}) failed: ${(e as Error).message}`); }
     }
+  }
+
+  // Idempotent: converts the SplitEntry ledger into split transactions so splits
+  // live in the transaction feed (and cash flow) like borrows. Each friend's net
+  // balance becomes one transaction: SPLIT_PAID if they owe you, SPLIT_OWED if you
+  // owe them. Skips any (user, person) that already has a split transaction.
+  private async migrateSplitEntriesToTransactions() {
+    const SPLIT_TYPES = ['SPLIT_PAID', 'SPLIT_COLLECTED', 'SPLIT_OWED', 'SPLIT_REPAID'];
+    const entries = await this.splitEntry.collection.find({}).toArray();
+    // Aggregate net balance per (userId, personId).
+    const nets = new Map<string, { userId: any; personId: any; balance: number }>();
+    for (const e of entries as any[]) {
+      const key = `${e.userId}|${e.personId}`;
+      const cur = nets.get(key) ?? { userId: e.userId, personId: e.personId, balance: 0 };
+      cur.balance += e.amount ?? 0;
+      nets.set(key, cur);
+    }
+    let created = 0;
+    for (const { userId, personId, balance } of nets.values()) {
+      if (Math.abs(balance) < 0.01) continue;
+      // Skip if the user already has any non-migration split activity for this person.
+      const userSplit = await this.txn.collection.findOne({
+        userId, personId, type: { $in: SPLIT_TYPES }, note: { $ne: 'Opening split balance' },
+      } as any);
+      if (userSplit) continue;
+      // Idempotent: clear any prior migration output for this person, then re-create one.
+      const now = Date.now();
+      // Dated to the opening epoch so it establishes a pre-existing balance without
+      // draining cash (same treatment as opening investments / loans).
+      const OPENING_EPOCH = moment.utc('2000-01-01', 'YYYY-MM-DD').valueOf();
+      // Deterministic _id keyed on (user, person) so concurrent/repeat runs collide
+      // on the unique index instead of inserting duplicates (race-safe).
+      const _id = new Types.ObjectId(
+        createHash('md5').update(`splitopen|${userId}|${personId}`).digest('hex').slice(0, 24),
+      );
+      try {
+        await this.txn.collection.insertOne({
+          _id,
+          userId,
+          personId,
+          type: balance > 0 ? 'SPLIT_PAID' : 'SPLIT_OWED',
+          amount: Math.abs(Math.round(balance * 100) / 100),
+          date: OPENING_EPOCH,
+          paymentMethod: 'CASH',
+          note: 'Opening split balance',
+          interestExpected: 0,
+          settled: false,
+          costBasis: 0,
+          splitGroupId: null,
+          createdAt: now,
+          updatedAt: now,
+        } as any);
+        created++;
+      } catch (e: any) {
+        if (e?.code !== 11000) throw e;  // ignore duplicate-key (already migrated)
+      }
+    }
+    if (created > 0) this.logger.log(`Migrated ${created} split balance(s) to transactions`);
+  }
+
+  // Idempotent: seeds the new SplitEntry ledger from legacy SplitBalance rows.
+  // Each non-zero balance becomes one OPENING entry. Skips any person who
+  // already has ledger entries, so it never double-counts on re-runs.
+  private async migrateSplitBalancesToEntries() {
+    const balances = await this.split.collection.find({}).toArray();
+    let created = 0;
+    for (const b of balances as any[]) {
+      if (!b.balance || Math.abs(b.balance) < 0.01) continue;
+      const exists = await this.splitEntry.collection.findOne({ userId: b.userId, personId: b.personId });
+      if (exists) continue;
+      await this.splitEntry.collection.insertOne({
+        userId: b.userId,
+        personId: b.personId,
+        amount: b.balance,
+        date: Date.now(),
+        note: 'Opening balance',
+        kind: 'OPENING',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as any);
+      created++;
+    }
+    if (created > 0) this.logger.log(`Seeded ${created} split ledger entr(ies) from legacy balances`);
   }
 
   // One-time idempotent migration: converts any BSON Date values to epoch ms

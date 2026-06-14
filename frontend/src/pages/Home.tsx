@@ -135,7 +135,7 @@ const [recent, setRecent]     = useState<Transaction[]>([]);
                 <p className="text-[11px] font-semibold text-slate-400 mb-2 px-1">{g.label}</p>
                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                   {g.items.map((t, i) => {
-                    const isPositive = ['INCOME', 'RECEIVE_BACK', 'DIVEST'].includes(getBehavior(t.type));
+                    const isPositive = ['INCOME', 'RECEIVE_BACK', 'DIVEST', 'SPLIT_COLLECT'].includes(getBehavior(t.type));
                     const catIcon  = t.category ? getCategoryIcon(t.category) : getTypeIcon(t.type);
                     const typeLbl  = t.category ? getCategoryLabel(t.category) : getTypeLabel(t.type);
                     const personName = t.person?.name;
@@ -186,7 +186,7 @@ const [recent, setRecent]     = useState<Transaction[]>([]);
 
 function AppBar({ month }: { month: string }) {
   return (
-    <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-100">
+    <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-100 sticky top-0 z-20" style={{ paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))' }}>
       <div className="flex items-center gap-2">
         <LogoMark size={28} />
         <span className="text-base font-bold text-slate-900">Finsight</span>

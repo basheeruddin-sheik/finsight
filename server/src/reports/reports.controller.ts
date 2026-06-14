@@ -25,4 +25,9 @@ export class ReportsController {
   getMoneyOutside() {
     return this.reportsService.getMoneyOutside();
   }
+
+  @Get('net-worth')
+  getNetWorth() {
+    return this.reportsService.getNetWorth();
+  }
 }

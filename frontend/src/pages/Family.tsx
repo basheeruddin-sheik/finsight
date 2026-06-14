@@ -26,7 +26,7 @@ export default function Family() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28">
-      <div className="bg-white border-b border-slate-100 px-4 py-3 sticky top-0 z-10">
+      <div className="bg-white border-b border-slate-100 px-4 py-3 sticky top-0 z-10" style={{ paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))' }}>
         <h1 className="text-base font-semibold text-slate-900">Family Transfers</h1>
       </div>
 

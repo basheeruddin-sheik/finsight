@@ -168,7 +168,7 @@ export function PageHeader({ title, subtitle, right, onBack }: {
 }) {
   const navigate = useNavigate();
   return (
-    <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-100 sticky top-0 z-10">
+    <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-100 sticky top-0 z-10" style={{ paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))' }}>
       <button
         onClick={onBack ?? (() => navigate(-1))}
         className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 text-lg shrink-0"

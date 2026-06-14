@@ -19,6 +19,7 @@ export class Transaction {
   @Prop({ default: 0 })     interestExpected: number;
   @Prop({ default: false }) settled: boolean;
   @Prop({ default: 0 })     costBasis: number;  // INVESTMENT_RETURN only: original amount invested being returned
+  @Prop({ default: null })  splitGroupId: string;  // links the per-friend legs of one shared bill
 }
 
 export const TransactionSchema = SchemaFactory.createForClass(Transaction);

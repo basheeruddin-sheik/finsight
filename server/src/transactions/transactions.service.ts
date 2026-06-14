@@ -135,33 +135,4 @@ export class TransactionsService {
       ),
     };
   }
-
-  // All-time totals — no date filter, just the user's full history.
-  async getTotals() {
-    const [txns, typeConfigs] = await Promise.all([
-      this.model.find({}),
-      this.configModel.find({ configType: 'type' }),
-    ]);
-    const behaviorMap = new Map(typeConfigs.map(t => [t.key, t.behavior]));
-    const acc: Record<string, number> = {};
-    let costReturned = 0;   // original invested amount returned via sells
-    for (const t of txns) {
-      const beh = behaviorMap.get(t.type) ?? 'EXPENSE';
-      acc[beh] = (acc[beh] ?? 0) + t.amount;
-      if (beh === 'DIVEST') costReturned += t.costBasis ?? 0;
-    }
-    const income   = acc['INCOME']       ?? 0;
-    const expenses = acc['EXPENSE']      ?? 0;
-    const transfer = acc['TRANSFER']     ?? 0;
-    const lent     = acc['LEND']         ?? 0;
-    const received = acc['RECEIVE_BACK'] ?? 0;
-    const invested = acc['INVEST']       ?? 0;
-    const divested = acc['DIVEST']       ?? 0;
-    return {
-      // Cash accumulated: returns add the full amount back (profit/loss included).
-      totalSavings:  Math.round(income - expenses - transfer + received - lent - invested + divested),
-      // Money still locked in investments at cost (original cost basis minus what's been sold).
-      totalInvested: Math.round(invested - costReturned),
-    };
-  }
 }

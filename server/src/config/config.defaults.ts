@@ -1,13 +1,17 @@
 // Per-user defaults. Seeded into a user's own config the first time they appear.
 
 export const BEHAVIOR_COLORS: Record<string, string> = {
-  INCOME:       'text-emerald-600',
-  EXPENSE:      'text-rose-500',
-  TRANSFER:     'text-blue-500',
-  LEND:         'text-amber-500',
-  RECEIVE_BACK: 'text-violet-500',
-  INVEST:       'text-yellow-600',
-  DIVEST:       'text-emerald-600',   // money returning from investments — positive
+  INCOME:        'text-emerald-600',
+  EXPENSE:       'text-rose-500',
+  TRANSFER:      'text-blue-500',
+  LEND:          'text-amber-500',
+  RECEIVE_BACK:  'text-violet-500',
+  INVEST:        'text-yellow-600',
+  DIVEST:        'text-emerald-600',   // money returning from investments — positive
+  SPLIT_LEND:    'text-rose-500',      // you fronted a friend's share — cash out
+  SPLIT_COLLECT: 'text-emerald-600',   // friend repaid you — cash in
+  SPLIT_OWE:     'text-amber-500',     // you owe a friend (friend paid your share)
+  SPLIT_REPAY:   'text-rose-500',      // you paid a friend back — cash out
 };
 
 export const DEFAULT_TYPES = [
@@ -26,6 +30,12 @@ export const DEFAULT_TYPES = [
   { configType: 'type', key: 'INVESTMENT_RETURN', label: 'Investment Return', icon: 'trending-up',   color: 'text-emerald-600', behavior: 'DIVEST',  hasCategories: true,  requiresPerson: false, personType: 'ANY', isBuiltin: true, order: 8 },
   // Opening Balance — one-time entry to seed existing savings/wealth when first using the app.
   { configType: 'type', key: 'OPENING_BALANCE',   label: 'Opening Balance',   icon: 'piggy-bank',    color: 'text-slate-500',   behavior: 'INCOME',  hasCategories: false, requiresPerson: false, personType: 'ANY', isBuiltin: true, order: 9 },
+  // Splits — shared expenses with friends. Created/managed from the Splits page.
+  // SPLIT_PAID/SPLIT_COLLECTED are the "they owe you" pair; SPLIT_OWED/SPLIT_REPAID the "you owe" pair.
+  { configType: 'type', key: 'SPLIT_PAID',        label: 'Split — I paid',    icon: 'users',         color: 'text-rose-500',    behavior: 'SPLIT_LEND',    hasCategories: false, requiresPerson: true, personType: 'FRIEND', isBuiltin: true, order: 10 },
+  { configType: 'type', key: 'SPLIT_COLLECTED',   label: 'Split collected',   icon: 'users',         color: 'text-emerald-600', behavior: 'SPLIT_COLLECT', hasCategories: false, requiresPerson: true, personType: 'FRIEND', isBuiltin: true, order: 11 },
+  { configType: 'type', key: 'SPLIT_OWED',        label: 'Split — I owe',     icon: 'users',         color: 'text-amber-500',   behavior: 'SPLIT_OWE',     hasCategories: false, requiresPerson: true, personType: 'FRIEND', isBuiltin: true, order: 12 },
+  { configType: 'type', key: 'SPLIT_REPAID',      label: 'Split paid back',   icon: 'users',         color: 'text-rose-500',    behavior: 'SPLIT_REPAY',   hasCategories: false, requiresPerson: true, personType: 'FRIEND', isBuiltin: true, order: 13 },
 ];
 
 export const DEFAULT_CATEGORIES = [

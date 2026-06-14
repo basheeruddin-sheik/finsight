@@ -1,16 +1,17 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Handshake, PieChart, Settings, Plus, type LucideIcon } from 'lucide-react';
+import { Home, Users, PieChart, Settings, Plus, type LucideIcon } from 'lucide-react';
 
 const tabs: { path: string; label: string; Icon?: LucideIcon; fab?: boolean }[] = [
   { path: '/',         label: 'Home',     Icon: Home     },
-  { path: '/borrows',  label: 'Borrows',  Icon: Handshake },
+  { path: '/borrows',  label: 'People',   Icon: Users    },
   { path: '/add',      label: '',         fab: true      },
   { path: '/insights', label: 'Insights', Icon: PieChart },
   { path: '/settings', label: 'Settings', Icon: Settings },
 ];
 
 const INSIGHTS_PATHS = ['/insights', '/reports', '/budgets'];
-const SETTINGS_PATHS = ['/settings', '/splits', '/family', '/persons'];
+const PEOPLE_PATHS   = ['/borrows', '/splits'];
+const SETTINGS_PATHS = ['/settings', '/family', '/persons'];
 
 export default function BottomNav() {
   const navigate    = useNavigate();
@@ -21,6 +22,7 @@ export default function BottomNav() {
 
   function isActive(tab: typeof tabs[number]) {
     if (tab.path === '/insights') return INSIGHTS_PATHS.includes(pathname);
+    if (tab.path === '/borrows')  return PEOPLE_PATHS.includes(pathname);
     if (tab.path === '/settings') return SETTINGS_PATHS.includes(pathname);
     return pathname === tab.path;
   }

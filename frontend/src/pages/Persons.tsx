@@ -39,7 +39,7 @@ export default function Persons() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28">
-      <div className="bg-white border-b border-slate-100 px-4 py-3 sticky top-0 z-10">
+      <div className="bg-white border-b border-slate-100 px-4 py-3 sticky top-0 z-10" style={{ paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))' }}>
         <h1 className="text-base font-semibold text-slate-900">Manage People</h1>
       </div>
 
@@ -90,10 +90,14 @@ export default function Persons() {
         </div>
       )}
 
-      <button onClick={() => setShowAdd(true)}
-        className="fixed bottom-24 right-4 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center text-2xl z-20">
-        +
-      </button>
+      <div className="fixed inset-x-0 bottom-24 z-20 pointer-events-none">
+        <div className="max-w-md mx-auto relative">
+          <button onClick={() => setShowAdd(true)}
+            className="pointer-events-auto absolute right-4 bottom-0 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center text-2xl">
+            +
+          </button>
+        </div>
+      </div>
 
       {showAdd && (
         <BottomSheet title="Add Person" onClose={() => { setShowAdd(false); setAddError(''); }}>

@@ -1,6 +1,7 @@
 export type TransactionType = string; // dynamic — driven by TypeConfig keys
 
-export type Behavior = 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'LEND' | 'RECEIVE_BACK' | 'WRITEOFF' | 'INVEST' | 'DIVEST';
+export type Behavior = 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'LEND' | 'RECEIVE_BACK' | 'WRITEOFF' | 'INVEST' | 'DIVEST'
+  | 'SPLIT_LEND' | 'SPLIT_COLLECT' | 'SPLIT_OWE' | 'SPLIT_REPAY';
 
 export interface TypeConfig {
   key: string;
@@ -73,6 +74,7 @@ export interface MonthlyBreakdown {
   categories: { category: string; total: number }[];
   paymentMethods: { method: string; total: number }[];
   topCategories: { category: string; total: number }[];
+  investments: { category: string; total: number }[]; // net cash deployed per asset (INVEST − DIVEST)
 }
 
 export interface CategoryTrend {
@@ -87,12 +89,27 @@ export interface SavingsRateMonth {
   familyTransfers: number;
   realSavings: number;
   savingsRate: number;
+  investments: number;
 }
 
 export interface MoneyOutside {
   borrowsOutstanding: number;
   splitsOwed: number;
   grandTotal: number;
+}
+
+export interface NetWorth {
+  netWorth: number;
+  cash: number;
+  investmentsTotal: number;
+  investments: { category: string; amount: number }[];
+  borrowsOutstanding: number;
+  splitsOwed: number;     // friends owe you (asset)
+  splitsOwe: number;      // you owe friends (liability)
+  splitsNet: number;      // splitsOwed − splitsOwe
+  salesProceeds: number;  // total cash received from investments sold
+  salesCost: number;      // original cost basis of what was sold
+  realizedGains: number;  // salesProceeds − salesCost (profit/loss booked)
 }
 
 export interface Budget {

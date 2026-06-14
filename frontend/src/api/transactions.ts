@@ -20,6 +20,3 @@ export const deleteTransaction = (id: string) =>
 
 export const getSummary = (month: string) =>
   client.get<TransactionSummary>('/transactions/summary', { params: { month } }).then(r => r.data);
-
-export const getTotals = () =>
-  client.get<{ totalSavings: number; totalInvested: number }>('/transactions/totals').then(r => r.data);
