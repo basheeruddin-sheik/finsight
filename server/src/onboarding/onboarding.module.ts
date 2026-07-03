@@ -7,6 +7,7 @@ import { Budget, BudgetSchema } from '../schemas/budget.schema';
 import { SplitBalance, SplitBalanceSchema } from '../schemas/split-balance.schema';
 import { SplitEntry, SplitEntrySchema } from '../schemas/split-entry.schema';
 import { OnboardingService } from './onboarding.service';
+import { AdminController } from './admin.controller';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { OnboardingService } from './onboarding.service';
       { name: SplitEntry.name,   schema: SplitEntrySchema },
     ]),
   ],
+  controllers: [AdminController],
   providers: [OnboardingService],
   exports: [OnboardingService],
 })

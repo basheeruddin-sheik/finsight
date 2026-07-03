@@ -184,6 +184,19 @@ export class OnboardingService implements OnApplicationBootstrap {
   // built-ins (e.g. INVESTMENT) automatically appear for existing users.
   async ensureUser(userId: string): Promise<void> {
     if (this.ready.has(userId)) return;
+    await this.seedForUser(userId);
+    this.ready.add(userId);
+  }
+
+  // Force re-seed a user, bypassing the in-memory ready cache.
+  // Used by the admin reseed endpoint to fix users who never got seeded.
+  async reseedUser(userId: string): Promise<void> {
+    this.ready.delete(userId);
+    await this.seedForUser(userId);
+    this.ready.add(userId);
+  }
+
+  private async seedForUser(userId: string): Promise<void> {
     await RequestContext.runBypass(async () => {
       const hasConfig = await this.config.exists({ userId });
       if (!hasConfig) {
@@ -195,7 +208,6 @@ export class OnboardingService implements OnApplicationBootstrap {
         await this.upsertMissingBuiltins(userId);
       }
     });
-    this.ready.add(userId);
   }
 
   // Insert any DEFAULT_TYPES / DEFAULT_CATEGORIES the user doesn't have yet.
