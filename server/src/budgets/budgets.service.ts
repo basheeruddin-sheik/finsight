@@ -50,14 +50,14 @@ export class BudgetsService {
     await this.budgetModel.findOneAndUpdate(
       { category: dto.category, month: dto.month },
       { monthlyLimit: dto.monthlyLimit },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
     const all = await this.findAll(dto.month);
     return all.find(b => b.category === dto.category) ?? null;
   }
 
   async update(id: string, dto: UpdateBudgetDto) {
-    const b = await this.budgetModel.findByIdAndUpdate(id, { monthlyLimit: dto.monthlyLimit }, { new: true });
+    const b = await this.budgetModel.findByIdAndUpdate(id, { monthlyLimit: dto.monthlyLimit }, { returnDocument: 'after' });
     if (!b) return null;
     const all = await this.findAll(b.month);
     return all.find(item => item.id === id) ?? null;

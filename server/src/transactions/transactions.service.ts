@@ -75,7 +75,7 @@ export class TransactionsService {
     if (dto.date)                    update.date = moment.utc(dto.date, 'YYYY-MM-DD').valueOf();
     if (dto.personId !== undefined)  update.personId = dto.personId ? new Types.ObjectId(dto.personId) : null;
     if (dto.borrowId !== undefined)  update.borrowId = dto.borrowId ? new Types.ObjectId(dto.borrowId) : null;
-    const doc = await this.model.findByIdAndUpdate(id, update, { new: true }).populate('personId');
+    const doc = await this.model.findByIdAndUpdate(id, update, { returnDocument: 'after' }).populate('personId');
     return toRes(doc!);
   }
 

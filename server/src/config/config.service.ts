@@ -59,14 +59,14 @@ export class ConfigService {
       if (dto.requiresPerson !== undefined) update.requiresPerson = dto.requiresPerson;
       if (dto.personType     !== undefined) update.personType     = dto.personType;
     }
-    return this.model.findOneAndUpdate({ configType: 'type', key }, update, { new: true });
+    return this.model.findOneAndUpdate({ configType: 'type', key }, update, { returnDocument: 'after' });
   }
 
   async setTypeArchived(key: string, archived: boolean) {
     const doc = await this.model.findOne({ configType: 'type', key });
     if (!doc) throw new NotFoundException('Type not found');
     if (doc.isBuiltin) throw new BadRequestException('Built-in types cannot be archived');
-    return this.model.findOneAndUpdate({ configType: 'type', key }, { archived }, { new: true });
+    return this.model.findOneAndUpdate({ configType: 'type', key }, { archived }, { returnDocument: 'after' });
   }
 
   // ── Categories ─────────────────────────────────────────────────────────────
@@ -94,14 +94,14 @@ export class ConfigService {
     const update: any = {};
     if (dto.icon !== undefined) update.icon = dto.icon;                      // always editable
     if (!existing.isBuiltin && dto.label !== undefined) update.label = dto.label.trim(); // built-ins: icon only
-    return this.model.findOneAndUpdate({ configType: 'category', key }, update, { new: true });
+    return this.model.findOneAndUpdate({ configType: 'category', key }, update, { returnDocument: 'after' });
   }
 
   async setCategoryArchived(key: string, archived: boolean) {
     const doc = await this.model.findOne({ configType: 'category', key });
     if (!doc) throw new NotFoundException('Category not found');
     if (doc.isBuiltin) throw new BadRequestException('Built-in categories cannot be archived');
-    return this.model.findOneAndUpdate({ configType: 'category', key }, { archived }, { new: true });
+    return this.model.findOneAndUpdate({ configType: 'category', key }, { archived }, { returnDocument: 'after' });
   }
 
   // ── Behavior map (used by other services) ─────────────────────────────────

@@ -27,7 +27,7 @@ export class PersonsService {
   }
 
   async update(id: string, dto: Partial<CreatePersonDto>) {
-    return this.personModel.findByIdAndUpdate(id, dto, { new: true });
+    return this.personModel.findByIdAndUpdate(id, dto, { returnDocument: 'after' });
   }
 
   // Soft delete: hide from lists/pickers but keep all linked records intact.
@@ -36,7 +36,7 @@ export class PersonsService {
     if (archived && await this.borrows.hasOpenBorrows(id)) {
       throw new BadRequestException('Cannot archive: this person has an active borrow. Settle it (full repayment) first.');
     }
-    return this.personModel.findByIdAndUpdate(id, { archived }, { new: true });
+    return this.personModel.findByIdAndUpdate(id, { archived }, { returnDocument: 'after' });
   }
 
   async delete(id: string) {
