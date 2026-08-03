@@ -109,6 +109,7 @@ export default function AddTransaction() {
 
   const handleSave = async () => {
     if (!validAmount) { setError('Enter a valid amount'); return; }
+    if (!note.trim()) { setError('Add a note'); return; }
     if (needsPerson && !personId) { setError('Select a person'); return; }
     if (needsBorrow && !borrowId) { setError('Select which borrow this applies to'); return; }
     setSaving(true); setError('');
@@ -120,7 +121,7 @@ export default function AddTransaction() {
         category: showCats ? category : undefined,
         paymentMethod,
         personId: needsPerson ? personId : undefined,
-        note: note.trim() || undefined,
+        note: note.trim(),
         borrowId: needsBorrow ? borrowId : undefined,
         interestExpected: isLend && interestExp ? Number(interestExp) : undefined,
         costBasis: isDivest && costBasis ? Number(costBasis) : undefined,
@@ -170,6 +171,22 @@ export default function AddTransaction() {
         </div>
 
         <div className="p-4 flex flex-col gap-6">
+          {/* Note — required */}
+          <div>
+            <Label>{NOTE_LABEL[type] ?? 'Description'}</Label>
+            <div className="bg-white rounded-2xl px-4 py-3 border border-slate-100 shadow-sm">
+              <input type="text" placeholder={NOTE_PLACEHOLDER[type] ?? 'What was this for?'}
+                value={note} onChange={e => setNote(e.target.value)}
+                className="w-full text-[15px] text-slate-800 outline-none bg-transparent placeholder:text-slate-300" />
+            </div>
+          </div>
+
+          {/* Date */}
+          <div>
+            <Label>Date</Label>
+            <DateField value={date} onChange={setDate} max={today()} />
+          </div>
+
           {/* Type */}
           <div>
             <Label>Type</Label>
@@ -313,17 +330,7 @@ export default function AddTransaction() {
             </div>
           )}
 
-          {/* Note */}
-          <div>
-            <Label>{NOTE_LABEL[type] ?? 'Description'}</Label>
-            <div className="bg-white rounded-2xl px-4 py-3 border border-slate-100 shadow-sm">
-              <input type="text" placeholder={NOTE_PLACEHOLDER[type] ?? 'What was this for?'}
-                value={note} onChange={e => setNote(e.target.value)}
-                className="w-full text-[15px] text-slate-800 outline-none bg-transparent placeholder:text-slate-300" />
-            </div>
-          </div>
-
-          {/* Payment + Date side by side */}
+          {/* Payment Method */}
           <div>
             <Label>Payment Method</Label>
             <div className="flex flex-wrap gap-2">
@@ -336,11 +343,6 @@ export default function AddTransaction() {
                 </button>
               ))}
             </div>
-          </div>
-
-          <div>
-            <Label>Date</Label>
-            <DateField value={date} onChange={setDate} max={today()} />
           </div>
 
           {error && (

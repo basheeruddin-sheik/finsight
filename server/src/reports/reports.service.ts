@@ -98,13 +98,18 @@ export class ReportsService {
         totals[beh] = (totals[beh] ?? 0) + t.amount;
       }
 
-      const income    = totals['INCOME']       ?? 0;
-      const expenses  = totals['EXPENSE']      ?? 0;
-      const transfers = totals['TRANSFER']     ?? 0;
-      const lent      = totals['LEND']         ?? 0;
-      const received  = totals['RECEIVE_BACK'] ?? 0;
-      const invested  = totals['INVEST']       ?? 0;
-      const realSavings = income - expenses - transfers + received - lent;
+      const income      = totals['INCOME']       ?? 0;
+      const expenses    = totals['EXPENSE']      ?? 0;
+      const transfers   = totals['TRANSFER']     ?? 0;
+      const lent        = totals['LEND']         ?? 0;
+      const received    = totals['RECEIVE_BACK'] ?? 0;
+      const invested    = totals['INVEST']       ?? 0;
+      // Same cash-flow treatment as transactions.service.ts getSummary(), so
+      // this trend agrees with the Home page for the same month.
+      const splitLent    = totals['SPLIT_LEND']    ?? 0;
+      const splitCollect = totals['SPLIT_COLLECT'] ?? 0;
+      const splitRepay   = totals['SPLIT_REPAY']   ?? 0;
+      const realSavings = income - expenses - transfers + received - lent - splitLent + splitCollect - splitRepay;
       const savingsRate = income > 0 ? Math.round((realSavings / income) * 100) : 0;
 
       result.push({ month: label, income: round(income), expenses: round(expenses), familyTransfers: round(transfers), realSavings: round(realSavings), savingsRate, investments: round(invested) });

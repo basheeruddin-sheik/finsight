@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { updateTransaction, deleteTransaction } from '../api/transactions';
 import type { Transaction, PaymentMethod, Person } from '../types';
-import { formatAmount, formatTime, PAYMENT_LABELS } from '../utils';
+import { formatAmount, formatTime, formatDateLongUTC, PAYMENT_LABELS } from '../utils';
 import { useConfig } from '../context/ConfigContext';
 import { BottomSheet, ConfirmModal, DateField } from './ui';
 import { ConfigIcon, IconBadge, getIconColor } from './configIcons';
@@ -9,6 +9,8 @@ import { Pencil, Trash2 } from 'lucide-react';
 
 const PAYMENTS: PaymentMethod[] = ['PHONEPE', 'GPAY', 'PAYTM', 'CASH', 'CREDIT_CARD', 'BANK_TRANSFER', 'OTHER'];
 
+// `createdAt` is a real moment in time — local timezone is correct here,
+// unlike `date` (a day-only value), which uses the UTC-safe formatDateLongUTC.
 const longDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -116,7 +118,7 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
                 );
               })()}
               <Row label="Payment">{PAYMENT_LABELS[t.paymentMethod]}</Row>
-              <Row label="Date">{longDate(t.date)}</Row>
+              <Row label="Date">{formatDateLongUTC(t.date)}</Row>
               {t.note && <Row label="Note">{t.note}</Row>}
               {t.createdAt && <Row label="Added on">{longDate(t.createdAt)} · {formatTime(t.createdAt)}</Row>}
             </div>

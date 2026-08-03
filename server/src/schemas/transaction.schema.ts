@@ -25,3 +25,11 @@ export class Transaction {
 export const TransactionSchema = SchemaFactory.createForClass(Transaction);
 TransactionSchema.plugin(tenantPlugin);
 TransactionSchema.plugin(epochTimestampsPlugin);
+
+// Compound indexes for the two hottest split queries: a friend's full split
+// ledger (userId + personId + type) and a type-filtered scan across all
+// friends (userId + type) — tenantPlugin injects userId into every query, so
+// it leads both indexes. Keeps split balance lookups query-only instead of
+// scanning the whole transaction collection as split volume grows.
+TransactionSchema.index({ userId: 1, personId: 1, type: 1 });
+TransactionSchema.index({ userId: 1, type: 1 });

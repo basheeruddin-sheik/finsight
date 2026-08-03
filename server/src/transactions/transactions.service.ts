@@ -31,6 +31,7 @@ function toRes(doc: any) {
     interestExpected: t.interestExpected ?? 0,
     settled: t.settled ?? false,
     costBasis: t.costBasis ?? 0,
+    splitGroupId: t.splitGroupId ?? null,
   };
 }
 
@@ -114,8 +115,18 @@ export class TransactionsService {
     const received    = totals['RECEIVE_BACK'] ?? 0;
     const invested    = totals['INVEST']       ?? 0;
     const divested    = totals['DIVEST']       ?? 0;
+    // Splits, cash-flow basis (mirrors LEND/RECEIVE_BACK for borrows):
+    //   SPLIT_LEND    — you paid a friend's share, cash left your pocket now
+    //   SPLIT_COLLECT — a friend paid you back, cash returned
+    //   SPLIT_REPAY   — you paid back what you owed, cash left your pocket now
+    //   SPLIT_OWE is excluded — a friend covering your share moves no cash of
+    //   yours; only SPLIT_REPAY (when you actually settle it) does.
+    const splitLent    = totals['SPLIT_LEND']    ?? 0;
+    const splitCollect = totals['SPLIT_COLLECT'] ?? 0;
+    const splitRepay   = totals['SPLIT_REPAY']   ?? 0;
 
-    const realSavings = income - expenses - transfers + received - lent - invested + divested;
+    const realSavings = income - expenses - transfers + received - lent - invested + divested
+      - splitLent + splitCollect - splitRepay;
     const savingsRate = income > 0 ? Math.round((realSavings / income) * 100) : 0;
 
     return {
@@ -126,6 +137,9 @@ export class TransactionsService {
       borrowRecoveries:  received,
       investments:       invested,
       investmentReturns: divested,
+      splitLent,
+      splitCollected:    splitCollect,
+      splitRepaid:       splitRepay,
       costBasisReturned,
       realSavings,
       savingsRate,

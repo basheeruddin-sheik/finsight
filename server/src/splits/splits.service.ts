@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { randomUUID } from 'crypto';
+import moment from 'moment';
 import { Transaction, TransactionDocument } from '../schemas/transaction.schema';
 import { Config, ConfigDocument } from '../schemas/config.schema';
 
@@ -30,16 +31,25 @@ export class SplitsService {
   }
 
   // Type keys for each split behaviour (so we can create the right transaction type).
+  // Also resolves EXPENSE, so createGroup can post the payer's own share as a
+  // normal expense alongside the friends' legs.
   private async typeForBehavior() {
-    const types = await this.configModel.find({ configType: 'type', behavior: { $in: SPLIT_BEHAVIORS } });
+    const types = await this.configModel.find({ configType: 'type', behavior: { $in: [...SPLIT_BEHAVIORS, 'EXPENSE'] } });
     return new Map(types.map(t => [t.behavior, t.key]));
   }
 
+  // Type keys whose behavior is a split behavior — lets queries filter at the
+  // DB level instead of pulling every transaction (all types, all history)
+  // and discarding the non-split ones in JS.
+  private async splitTypeKeys(): Promise<string[]> {
+    const types = await this.configModel.find({ configType: 'type', behavior: { $in: SPLIT_BEHAVIORS } });
+    return types.map(t => t.key);
+  }
+
   private async splitTxns() {
-    const beh = await this.behaviorMap();
-    const all = await this.txnModel.find().populate('personId').sort({ date: -1, createdAt: -1 });
-    return all.filter(t => SPLIT_BEHAVIORS.includes(beh.get(t.type) ?? ''))
-      .map(t => ({ doc: t, behavior: beh.get(t.type)! }));
+    const [beh, typeKeys] = await Promise.all([this.behaviorMap(), this.splitTypeKeys()]);
+    const all = await this.txnModel.find({ type: { $in: typeKeys } }).populate('personId').sort({ date: -1, createdAt: -1 });
+    return all.map(t => ({ doc: t, behavior: beh.get(t.type)! }));
   }
 
   // One balance row per friend with a non-zero net.
@@ -63,44 +73,49 @@ export class SplitsService {
 
   // Per-friend ledger + derived balance.
   async findByPerson(personId: string) {
-    const beh = await this.behaviorMap();
+    const [beh, typeKeys] = await Promise.all([this.behaviorMap(), this.splitTypeKeys()]);
     const oid = new Types.ObjectId(personId);
-    const docs = await this.txnModel.find({ personId: oid }).sort({ date: -1, createdAt: -1 });
-    const entries = docs
-      .filter(d => SPLIT_BEHAVIORS.includes(beh.get(d.type) ?? ''))
-      .map(d => {
-        const behavior = beh.get(d.type)!;
-        return {
-          id: (d._id as any).toString(),
-          type: d.type,
-          behavior,
-          amount: d.amount,
-          signed: round(SIGN[behavior] * d.amount),
-          date: d.date,
-          note: d.note ?? null,
-          splitGroupId: d.splitGroupId ?? null,
-        };
-      });
+    const docs = await this.txnModel.find({ personId: oid, type: { $in: typeKeys } }).sort({ date: -1, createdAt: -1 });
+    const entries = docs.map(d => {
+      const behavior = beh.get(d.type)!;
+      return {
+        id: (d._id as any).toString(),
+        type: d.type,
+        behavior,
+        amount: d.amount,
+        signed: round(SIGN[behavior] * d.amount),
+        date: d.date,
+        note: d.note ?? null,
+        splitGroupId: d.splitGroupId ?? null,
+      };
+    });
     const balance = round(entries.reduce((s, e) => s + e.signed, 0));
     return { personId, balance, entries };
   }
 
   // Create the legs of a shared bill.
-  //   iPaid=true  → each leg is a friend who owes you their share (SPLIT_PAID)
+  //   iPaid=true  → each leg is a friend who owes you their share (SPLIT_PAID),
+  //                 plus (if myShare is given) a normal EXPENSE for your own
+  //                 share, so the split reflects the full bill and counts
+  //                 toward your monthly spending like any other expense.
   //   iPaid=false → each leg is a friend who paid your share, so you owe them (SPLIT_OWED)
   async createGroup(body: {
     iPaid: boolean;
     legs: { personId: string; amount: number }[];
     note?: string;
-    date?: number;
+    date?: string;
+    myShare?: number;
+    myShareCategory?: string;
   }) {
     const typeFor = await this.typeForBehavior();
     const typeKey = body.iPaid ? typeFor.get('SPLIT_LEND') : typeFor.get('SPLIT_OWE');
     if (!typeKey) throw new Error('Split types are not configured');
 
-    const date = body.date ?? Date.now();
-    const groupId = body.legs.length > 1 ? randomUUID() : undefined;
+    const date = body.date ? moment.utc(body.date, 'YYYY-MM-DD').valueOf() : Date.now();
     const valid = body.legs.filter(l => l.personId && l.amount > 0);
+    const myShareAmt = body.iPaid && body.myShare && body.myShare > 0 ? round(body.myShare) : 0;
+    // Group when the bill produced more than one transaction (friends + your own share).
+    const groupId = (valid.length + (myShareAmt > 0 ? 1 : 0)) > 1 ? randomUUID() : undefined;
 
     await Promise.all(valid.map(l => this.txnModel.create({
       type: typeKey,
@@ -112,7 +127,24 @@ export class SplitsService {
       splitGroupId: groupId,
     })));
 
-    return { created: valid.length };
+    let createdCount = valid.length;
+    if (myShareAmt > 0) {
+      const expenseType = typeFor.get('EXPENSE');
+      if (expenseType) {
+        await this.txnModel.create({
+          type: expenseType,
+          amount: myShareAmt,
+          date,
+          category: body.myShareCategory ?? undefined,
+          paymentMethod: 'CASH',
+          note: body.note ? `${body.note} — your share` : 'Your share of a split',
+          splitGroupId: groupId,
+        });
+        createdCount++;
+      }
+    }
+
+    return { created: createdCount };
   }
 
   // Settle a friend — posts the matching cash transaction toward the balance.

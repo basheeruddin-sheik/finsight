@@ -28,7 +28,6 @@ export interface AppConfig {
   types: TypeConfig[];
   categories: CategoryConfig[];
 }
-export type Category = 'FOOD_DINING' | 'GROCERIES' | 'SHOPPING' | 'FUEL_TRAVEL' | 'SUBSCRIPTIONS' | 'MEDICAL' | 'ENTERTAINMENT' | 'UTILITIES' | 'OTHER';
 export type PaymentMethod = 'GPAY' | 'PHONEPE' | 'PAYTM' | 'CASH' | 'CREDIT_CARD' | 'BANK_TRANSFER' | 'OTHER';
 
 export interface Person {
@@ -54,6 +53,7 @@ export interface Transaction {
   interestExpected?: number;
   settled?: boolean;
   costBasis?: number;
+  splitGroupId?: string | null;
 }
 
 export interface TransactionSummary {
@@ -64,6 +64,9 @@ export interface TransactionSummary {
   borrowRecoveries: number;
   investments: number;
   investmentReturns: number;
+  splitLent: number;
+  splitCollected: number;
+  splitRepaid: number;
   costBasisReturned: number;
   realSavings: number;
   savingsRate: number;
