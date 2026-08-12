@@ -17,8 +17,10 @@ export class BudgetsService {
   ) {}
 
   async findAll(month: string) {
-    const from = moment(month, 'YYYY-MM').startOf('month').valueOf();
-    const to   = moment(month, 'YYYY-MM').add(1, 'month').startOf('month').valueOf();
+    // UTC — `date` is stored as UTC midnight; a server-local boundary would
+    // shift the window by the server's timezone offset.
+    const from = moment.utc(month, 'YYYY-MM').startOf('month').valueOf();
+    const to   = moment.utc(month, 'YYYY-MM').add(1, 'month').startOf('month').valueOf();
 
     const [budgets, txns] = await Promise.all([
       this.budgetModel.find({ month }),

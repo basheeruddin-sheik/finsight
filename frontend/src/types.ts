@@ -1,7 +1,7 @@
 export type TransactionType = string; // dynamic — driven by TypeConfig keys
 
 export type Behavior = 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'LEND' | 'RECEIVE_BACK' | 'WRITEOFF' | 'INVEST' | 'DIVEST'
-  | 'SPLIT_LEND' | 'SPLIT_COLLECT' | 'SPLIT_OWE' | 'SPLIT_REPAY';
+  | 'SPLIT_LEND' | 'SPLIT_COLLECT' | 'SPLIT_OWE' | 'SPLIT_REPAY' | 'ACCOUNT_TRANSFER';
 
 export interface TypeConfig {
   key: string;
@@ -38,6 +38,17 @@ export interface Person {
   archived?: boolean;
 }
 
+export interface Account {
+  id: string;
+  bank: string;               // key into BANKS (frontend/src/data/banks.ts)
+  last4: string | null;
+  customName: string | null;  // only meaningful when bank === 'OTHER'
+  openingBalance: number;
+  balance: number;      // openingBalance + every transaction tagged to this account
+  isDefault: boolean;
+  archived?: boolean;
+}
+
 export interface Transaction {
   id: string;
   type: TransactionType;
@@ -54,6 +65,8 @@ export interface Transaction {
   settled?: boolean;
   costBasis?: number;
   splitGroupId?: string | null;
+  accountId?: string | null;
+  toAccountId?: string | null;
 }
 
 export interface TransactionSummary {
@@ -136,4 +149,5 @@ export interface CreateTransactionDto {
   borrowId?: string;          // repayment / interest → the lend txn it applies to
   interestExpected?: number;  // BORROW_GIVEN only
   costBasis?: number;         // INVESTMENT_RETURN only: original amount invested
+  accountId?: string;         // which account this moved money in/out of
 }

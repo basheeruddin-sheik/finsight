@@ -33,12 +33,12 @@ export const getSplitDetail = (personId: string) =>
   client.get<SplitDetail>(`/splits/person/${personId}`).then(r => r.data);
 
 // Create the legs of a shared bill. iPaid=true → friends owe you; false → you owe the payer.
-export const createSplitGroup = (body: { iPaid: boolean; legs: SplitLeg[]; note?: string; date?: string; myShare?: number; myShareCategory?: string }) =>
+export const createSplitGroup = (body: { iPaid: boolean; legs: SplitLeg[]; note?: string; date?: string; myShare?: number; myShareCategory?: string; category?: string; accountId?: string }) =>
   client.post<{ created: number }>('/splits/group', body).then(r => r.data);
 
 // Omit amount to clear the full balance; pass it for a partial settlement.
-export const settleSplit = (personId: string, amount?: number) =>
-  client.post<SplitDetail>('/splits/settle', { personId, amount }).then(r => r.data);
+export const settleSplit = (personId: string, amount: number | undefined, accountId: string, date?: string) =>
+  client.post<SplitDetail>('/splits/settle', { personId, amount, accountId, date }).then(r => r.data);
 
 export const deleteSplitEntry = (id: string) =>
   client.delete(`/splits/entry/${id}`).then(r => r.data);

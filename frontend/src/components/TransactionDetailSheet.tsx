@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { updateTransaction, deleteTransaction } from '../api/transactions';
-import type { Transaction, PaymentMethod, Person } from '../types';
+import { getAccounts } from '../api/accounts';
+import { accountLabel } from '../data/banks';
+import type { Transaction, PaymentMethod, Person, Account } from '../types';
 import { formatAmount, formatTime, formatDateLongUTC, PAYMENT_LABELS } from '../utils';
 import { useConfig } from '../context/ConfigContext';
 import { BottomSheet, ConfirmModal, DateField } from './ui';
@@ -45,8 +47,25 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
   const [date,      setDate]      = useState(t.date.substring(0, 10));
   const [note,      setNote]      = useState(t.note ?? '');
   const [personId,  setPersonId]  = useState(t.personId ?? '');
+  const [accountId, setAccountId] = useState(t.accountId ?? '');
+  const [accounts,  setAccounts]  = useState<Account[]>([]);
+
+  useEffect(() => { getAccounts().then(setAccounts).catch(() => {}); }, []);
+  // Legacy transactions (predating accounts) have no accountId — pre-select
+  // the default account instead of leaving the edit picker blank.
+  useEffect(() => {
+    if (!accountId && accounts.length > 0) {
+      const def = accounts.find(a => a.isDefault) ?? accounts[0];
+      setAccountId(def.id);
+    }
+  }, [accounts]);
+  const accountEntity = accounts.find(a => a.id === t.accountId);
+  const accountName = accountEntity ? accountLabel(accountEntity) : undefined;
+  const toAccountEntity = accounts.find(a => a.id === t.toAccountId);
+  const toAccountName = toAccountEntity ? accountLabel(toAccountEntity) : undefined;
 
   const behavior   = getBehavior(t.type);
+  const isTransfer = behavior === 'ACCOUNT_TRANSFER';
   const isPositive = behavior === 'INCOME' || behavior === 'RECEIVE_BACK' || behavior === 'DIVEST' || behavior === 'SPLIT_COLLECT';
   const icon       = t.category ? getCategoryIcon(t.category) : getTypeIcon(t.type);
 
@@ -74,6 +93,7 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
         paymentMethod: payment,
         personId: needsPerson ? personId : undefined,
         note: note.trim() || undefined,
+        accountId: accountId || undefined,
       });
       onChanged(); onClose();
     } catch { setError('Failed to save. Try again.'); setSaving(false); }
@@ -87,8 +107,8 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
             {/* Hero */}
             <div className="flex flex-col items-center text-center pt-1 pb-2">
               <IconBadge name={icon} size={26} className="w-14 h-14 rounded-2xl mb-3" />
-              <p className={`text-3xl font-bold ${isPositive ? 'text-emerald-600' : 'text-rose-500'}`}>
-                {isPositive ? '+' : '−'}{formatAmount(t.amount)}
+              <p className={`text-3xl font-bold ${isTransfer ? 'text-slate-700' : isPositive ? 'text-emerald-600' : 'text-rose-500'}`}>
+                {isTransfer ? '' : isPositive ? '+' : '−'}{formatAmount(t.amount)}
               </p>
               <p className="text-sm text-slate-400 mt-1">{t.note || getTypeLabel(t.type)}</p>
             </div>
@@ -117,7 +137,17 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
                   </>
                 );
               })()}
-              <Row label="Payment">{PAYMENT_LABELS[t.paymentMethod]}</Row>
+              {isTransfer ? (
+                <>
+                  {accountName && <Row label="From">{accountName}</Row>}
+                  {toAccountName && <Row label="To">{toAccountName}</Row>}
+                </>
+              ) : (
+                <>
+                  <Row label="Payment">{PAYMENT_LABELS[t.paymentMethod]}</Row>
+                  {accountName && <Row label="Account">{accountName}</Row>}
+                </>
+              )}
               <Row label="Date">{formatDateLongUTC(t.date)}</Row>
               {t.note && <Row label="Note">{t.note}</Row>}
               {t.createdAt && <Row label="Added on">{longDate(t.createdAt)} · {formatTime(t.createdAt)}</Row>}
@@ -153,6 +183,40 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
               <input type="text" value={note} onChange={e => setNote(e.target.value)}
                 className="w-full text-[15px] text-slate-800 outline-none bg-transparent" />
             </div>
+
+            {/* Date */}
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Date</p>
+              <DateField value={date} onChange={setDate} />
+            </div>
+
+            {/* Payment */}
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Payment Method</p>
+              <div className="flex flex-wrap gap-2">
+                {PAYMENTS.map(p => (
+                  <button key={p} onClick={() => setPayment(p)}
+                    className={`px-3 py-2 rounded-xl text-sm font-semibold border transition-all ${payment === p ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                    {PAYMENT_LABELS[p]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Account */}
+            {accounts.length > 0 && (
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Account</p>
+                <div className="flex flex-wrap gap-2">
+                  {accounts.map(a => (
+                    <button key={a.id} onClick={() => setAccountId(a.id)}
+                      className={`px-3 py-2 rounded-xl text-sm font-semibold border transition-all ${accountId === a.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                      {accountLabel(a)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Type */}
             <div>
@@ -205,25 +269,6 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
                 </div>
               </div>
             )}
-
-            {/* Payment */}
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Payment Method</p>
-              <div className="flex flex-wrap gap-2">
-                {PAYMENTS.map(p => (
-                  <button key={p} onClick={() => setPayment(p)}
-                    className={`px-3 py-2 rounded-xl text-sm font-semibold border transition-all ${payment === p ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
-                    {PAYMENT_LABELS[p]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Date */}
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Date</p>
-              <DateField value={date} onChange={setDate} />
-            </div>
 
             {error && <p className="text-sm text-rose-500 font-medium">{error}</p>}
 

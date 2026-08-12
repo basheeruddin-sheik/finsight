@@ -36,6 +36,11 @@ export const DEFAULT_TYPES = [
   { configType: 'type', key: 'SPLIT_COLLECTED',   label: 'Split collected',   icon: 'users',         color: 'text-emerald-600', behavior: 'SPLIT_COLLECT', hasCategories: false, requiresPerson: true, personType: 'FRIEND', isBuiltin: true, order: 11 },
   { configType: 'type', key: 'SPLIT_OWED',        label: 'Split — I owe',     icon: 'users',         color: 'text-amber-500',   behavior: 'SPLIT_OWE',     hasCategories: false, requiresPerson: true, personType: 'FRIEND', isBuiltin: true, order: 12 },
   { configType: 'type', key: 'SPLIT_REPAID',      label: 'Split paid back',   icon: 'users',         color: 'text-rose-500',    behavior: 'SPLIT_REPAY',   hasCategories: false, requiresPerson: true, personType: 'FRIEND', isBuiltin: true, order: 13 },
+  // System-only: money moved between two of the user's own accounts. Created
+  // via the Accounts page transfer flow, never from the Add Transaction type
+  // picker (filtered out there) — it doesn't touch income/expense/savings,
+  // only the two accounts' balances.
+  { configType: 'type', key: 'ACCOUNT_TRANSFER',  label: 'Account Transfer',  icon: 'landmark',      color: 'text-slate-500',   behavior: 'ACCOUNT_TRANSFER', hasCategories: false, requiresPerson: false, personType: 'ANY', isBuiltin: true, order: 14 },
 ];
 
 export const DEFAULT_CATEGORIES = [

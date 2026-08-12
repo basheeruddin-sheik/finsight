@@ -26,7 +26,7 @@ export default function Persons() {
     try {
       await createPerson({ name: form.name.trim(), type: form.type, phone: form.phone.trim() || undefined });
       setShowAdd(false); setForm({ name: '', type: 'FRIEND', phone: '' }); load();
-    } catch { setAddError('Failed to save. Try again.'); }
+    } catch (e: any) { setAddError(e.response?.data?.message ?? 'Failed to save. Try again.'); }
   };
 
   const handleArchive = async (id: string) => {

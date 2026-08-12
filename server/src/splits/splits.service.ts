@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { randomUUID } from 'crypto';
@@ -48,7 +48,7 @@ export class SplitsService {
 
   private async splitTxns() {
     const [beh, typeKeys] = await Promise.all([this.behaviorMap(), this.splitTypeKeys()]);
-    const all = await this.txnModel.find({ type: { $in: typeKeys } }).populate('personId').sort({ date: -1, createdAt: -1 });
+    const all = await this.txnModel.find({ type: { $in: typeKeys } }).populate('personId').sort({ date: -1, createdAt: 1 });
     return all.map(t => ({ doc: t, behavior: beh.get(t.type)! }));
   }
 
@@ -75,7 +75,7 @@ export class SplitsService {
   async findByPerson(personId: string) {
     const [beh, typeKeys] = await Promise.all([this.behaviorMap(), this.splitTypeKeys()]);
     const oid = new Types.ObjectId(personId);
-    const docs = await this.txnModel.find({ personId: oid, type: { $in: typeKeys } }).sort({ date: -1, createdAt: -1 });
+    const docs = await this.txnModel.find({ personId: oid, type: { $in: typeKeys } }).sort({ date: -1, createdAt: 1 });
     const entries = docs.map(d => {
       const behavior = beh.get(d.type)!;
       return {
@@ -106,10 +106,17 @@ export class SplitsService {
     date?: string;
     myShare?: number;
     myShareCategory?: string;
+    category?: string;  // "I owe" only — what the debt is for (friend legs otherwise uncategorized)
+    accountId?: string; // "I paid" only — the account the whole bill was paid from
   }) {
     const typeFor = await this.typeForBehavior();
     const typeKey = body.iPaid ? typeFor.get('SPLIT_LEND') : typeFor.get('SPLIT_OWE');
     if (!typeKey) throw new Error('Split types are not configured');
+    // "I paid" moves real cash out of one of your accounts for the whole bill
+    // (friends' shares included) — "I owe" doesn't (a friend covering your
+    // share touches their account, not yours, until you actually repay).
+    if (body.iPaid && !body.accountId) throw new BadRequestException('Select an account');
+    const accountId = body.iPaid && body.accountId ? new Types.ObjectId(body.accountId) : undefined;
 
     const date = body.date ? moment.utc(body.date, 'YYYY-MM-DD').valueOf() : Date.now();
     const valid = body.legs.filter(l => l.personId && l.amount > 0);
@@ -121,10 +128,12 @@ export class SplitsService {
       type: typeKey,
       amount: round(l.amount),
       date,
+      category: !body.iPaid ? body.category ?? undefined : undefined,
       paymentMethod: 'CASH',
       personId: new Types.ObjectId(l.personId),
       note: body.note ?? undefined,
       splitGroupId: groupId,
+      accountId,
     })));
 
     let createdCount = valid.length;
@@ -139,6 +148,7 @@ export class SplitsService {
           paymentMethod: 'CASH',
           note: body.note ? `${body.note} — your share` : 'Your share of a split',
           splitGroupId: groupId,
+          accountId,
         });
         createdCount++;
       }
@@ -149,10 +159,11 @@ export class SplitsService {
 
   // Settle a friend — posts the matching cash transaction toward the balance.
   // Pass `amount` for a partial settlement; omit it to clear the full balance.
-  async settle(personId: string, amount?: number) {
+  async settle(personId: string, amount?: number, accountId?: string, date?: string) {
     const { balance } = await this.findByPerson(personId);
     const max = Math.abs(balance);
     if (max < 0.01) return this.findByPerson(personId);
+    if (!accountId) throw new BadRequestException('Select an account');
     const amt = round(amount && amount > 0 ? Math.min(amount, max) : max);
     const typeFor = await this.typeForBehavior();
     // balance > 0: they owe you → you collect (SPLIT_COLLECT)
@@ -162,10 +173,16 @@ export class SplitsService {
     await this.txnModel.create({
       type: typeKey,
       amount: amt,
-      date: Date.now(),
+      // Day-only, like every other transaction's `date` (UTC midnight) — not
+      // Date.now(). A real timestamp here would outrank same-day midnight-dated
+      // transactions in the {date:-1, createdAt:-1} sort regardless of actual
+      // creation order, which is what caused settle-ups to always cluster above
+      // same-day activity in the Home/Splits feed no matter when they happened.
+      date: date ? moment.utc(date, 'YYYY-MM-DD').valueOf() : moment.utc().startOf('day').valueOf(),
       paymentMethod: 'CASH',
       personId: new Types.ObjectId(personId),
       note: amt < max ? 'Partial settle' : 'Settled up',
+      accountId: new Types.ObjectId(accountId),
     });
     return this.findByPerson(personId);
   }

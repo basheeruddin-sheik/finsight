@@ -9,4 +9,5 @@ export class CreateTransactionDto {
   borrowId?: string;          // repayment / interest → the lend txn it applies to
   interestExpected?: number;  // BORROW_GIVEN only
   costBasis?: number;         // INVESTMENT_RETURN only: original amount invested
+  accountId?: string;         // which account this moved money in/out of
 }

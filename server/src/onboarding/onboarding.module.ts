@@ -6,6 +6,7 @@ import { Person, PersonSchema } from '../schemas/person.schema';
 import { Budget, BudgetSchema } from '../schemas/budget.schema';
 import { SplitBalance, SplitBalanceSchema } from '../schemas/split-balance.schema';
 import { SplitEntry, SplitEntrySchema } from '../schemas/split-entry.schema';
+import { Account, AccountSchema } from '../schemas/account.schema';
 import { OnboardingService } from './onboarding.service';
 import { AdminController } from './admin.controller';
 
@@ -18,6 +19,7 @@ import { AdminController } from './admin.controller';
       { name: Budget.name,       schema: BudgetSchema },
       { name: SplitBalance.name, schema: SplitBalanceSchema },
       { name: SplitEntry.name,   schema: SplitEntrySchema },
+      { name: Account.name,      schema: AccountSchema },
     ]),
   ],
   controllers: [AdminController],

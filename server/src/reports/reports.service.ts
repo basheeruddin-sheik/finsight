@@ -34,7 +34,7 @@ export class ReportsService {
   }
 
   async getMonthlyBreakdown(month: string) {
-    const { from, to } = monthEpoch(moment(month, 'YYYY-MM'));
+    const { from, to } = monthEpoch(moment.utc(month, 'YYYY-MM'));
     const behaviorMap = await this.getBehaviorMap();
     const txns = await this.txnModel.find({ date: { $gte: from, $lt: to } });
 
@@ -73,7 +73,7 @@ export class ReportsService {
     const months: { month: string; total: number }[] = [];
     const expenseKeys = await this.getExpenseTypeKeys();
     for (let i = 5; i >= 0; i--) {
-      const m = moment().subtract(i, 'months');
+      const m = moment.utc().subtract(i, 'months');
       const { from, to } = monthEpoch(m);
       const label = m.format('YYYY-MM');
       const txns = await this.txnModel.find({ date: { $gte: from, $lt: to }, type: { $in: expenseKeys }, category });
@@ -87,7 +87,7 @@ export class ReportsService {
     const behaviorMap = await this.getBehaviorMap();
 
     for (let i = monthsCount - 1; i >= 0; i--) {
-      const m = moment().subtract(i, 'months');
+      const m = moment.utc().subtract(i, 'months');
       const { from, to } = monthEpoch(m);
       const label = m.format('YYYY-MM');
       const txns = await this.txnModel.find({ date: { $gte: from, $lt: to } });

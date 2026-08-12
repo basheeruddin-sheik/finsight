@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createTransaction } from '../api/transactions';
 import { getPersons } from '../api/persons';
+import { getAccounts } from '../api/accounts';
+import { accountLabel } from '../data/banks';
 import { getPersonBorrows, type Borrow } from '../api/borrows';
-import type { PaymentMethod, Person } from '../types';
+import type { PaymentMethod, Person, Account } from '../types';
 import { formatAmount, formatDate, PAYMENT_LABELS } from '../utils';
 import { useConfig } from '../context/ConfigContext';
 import { PrimaryButton, DateField } from '../components/ui';
@@ -51,6 +53,8 @@ export default function AddTransaction() {
   const [note,          setNote]          = useState('');
   const [personId,      setPersonId]      = useState(sp.get('person') ?? '');
   const [persons,       setPersons]       = useState<Person[]>([]);
+  const [accounts,      setAccounts]      = useState<Account[]>([]);
+  const [accountId,     setAccountId]     = useState('');
   const [saving,        setSaving]        = useState(false);
   const [error,         setError]         = useState('');
   const [interestExp,   setInterestExp]   = useState('');           // BORROW_GIVEN
@@ -61,6 +65,11 @@ export default function AddTransaction() {
   useEffect(() => {
     amountRef.current?.focus();
     getPersons().then(setPersons).catch(() => {});
+    getAccounts().then(accs => {
+      setAccounts(accs);
+      const def = accs.find(a => a.isDefault) ?? accs[0];
+      if (def) setAccountId(def.id);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -112,6 +121,7 @@ export default function AddTransaction() {
     if (!note.trim()) { setError('Add a note'); return; }
     if (needsPerson && !personId) { setError('Select a person'); return; }
     if (needsBorrow && !borrowId) { setError('Select which borrow this applies to'); return; }
+    if (!accountId) { setError('Select an account'); return; }
     setSaving(true); setError('');
     try {
       await createTransaction({
@@ -125,6 +135,7 @@ export default function AddTransaction() {
         borrowId: needsBorrow ? borrowId : undefined,
         interestExpected: isLend && interestExp ? Number(interestExp) : undefined,
         costBasis: isDivest && costBasis ? Number(costBasis) : undefined,
+        accountId,
       });
       navigate('/');
     } catch (e: any) {
@@ -187,11 +198,48 @@ export default function AddTransaction() {
             <DateField value={date} onChange={setDate} max={today()} />
           </div>
 
+          {/* Payment Method */}
+          <div>
+            <Label>Payment Method</Label>
+            <div className="flex flex-wrap gap-2">
+              {PAYMENTS.map(p => (
+                <button key={p} onClick={() => setPaymentMethod(p)}
+                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                    paymentMethod === p ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'
+                  }`}>
+                  {PAYMENT_LABELS[p]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Account — which balance this moves */}
+          <div>
+            <Label>Account</Label>
+            {accounts.length === 0 ? (
+              <div className="bg-rose-50 border border-rose-100 rounded-2xl px-4 py-3">
+                <p className="text-sm text-rose-600 font-medium">No accounts yet.</p>
+                <p className="text-xs text-rose-400 mt-0.5">Go to Settings → Accounts to add one.</p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {accounts.map(a => (
+                  <button key={a.id} onClick={() => setAccountId(a.id)}
+                    className={`px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                      accountId === a.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'
+                    }`}>
+                    {accountLabel(a)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Type */}
           <div>
             <Label>Type</Label>
             <div className="flex flex-wrap gap-2">
-              {activeTypes.map(t => {
+              {activeTypes.filter(t => t.key !== 'ACCOUNT_TRANSFER').map(t => {
                 const active = type === t.key;
                 return (
                   <button key={t.key} onClick={() => { setType(t.key); setPersonId(''); }}
@@ -329,21 +377,6 @@ export default function AddTransaction() {
               })()}
             </div>
           )}
-
-          {/* Payment Method */}
-          <div>
-            <Label>Payment Method</Label>
-            <div className="flex flex-wrap gap-2">
-              {PAYMENTS.map(p => (
-                <button key={p} onClick={() => setPaymentMethod(p)}
-                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all ${
-                    paymentMethod === p ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'
-                  }`}>
-                  {PAYMENT_LABELS[p]}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {error && (
             <div className="bg-rose-50 border border-rose-100 rounded-2xl px-4 py-3">

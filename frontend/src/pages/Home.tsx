@@ -181,7 +181,9 @@ const [recent, setRecent]     = useState<Transaction[]>([]);
                     }
 
                     const t = item.t;
-                    const isPositive = ['INCOME', 'RECEIVE_BACK', 'DIVEST', 'SPLIT_COLLECT'].includes(getBehavior(t.type));
+                    const txnBehavior = getBehavior(t.type);
+                    const isTransfer = txnBehavior === 'ACCOUNT_TRANSFER';
+                    const isPositive = ['INCOME', 'RECEIVE_BACK', 'DIVEST', 'SPLIT_COLLECT'].includes(txnBehavior);
                     const catIcon  = t.category ? getCategoryIcon(t.category) : getTypeIcon(t.type);
                     const typeLbl  = t.category ? getCategoryLabel(t.category) : getTypeLabel(t.type);
                     const personName = t.person?.name;
@@ -197,8 +199,8 @@ const [recent, setRecent]     = useState<Transaction[]>([]);
                           <p className="text-xs text-slate-400 mt-0.5">{sub}</p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className={`text-sm font-bold ${isPositive ? 'text-emerald-600' : 'text-rose-500'}`}>
-                            {isPositive ? '+' : '−'}{formatAmount(t.amount)}
+                          <p className={`text-sm font-bold ${isTransfer ? 'text-slate-700' : isPositive ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            {isTransfer ? '' : isPositive ? '+' : '−'}{formatAmount(t.amount)}
                           </p>
                           <p className="text-[10px] text-slate-300 mt-0.5 tabular-nums">{formatTime(t.createdAt)}</p>
                         </div>

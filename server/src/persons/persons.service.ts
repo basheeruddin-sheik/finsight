@@ -23,7 +23,19 @@ export class PersonsService {
   }
 
   async create(dto: CreatePersonDto) {
-    return this.personModel.create(dto);
+    // Case-insensitive uniqueness among active people of the same type — a
+    // duplicate "Raju" would silently fragment their balance/history across
+    // two separate person records instead of one.
+    const name = dto.name.trim();
+    const existing = await this.personModel.findOne({
+      type: dto.type,
+      archived: { $ne: true },
+      name: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+    });
+    if (existing) {
+      throw new BadRequestException(`${existing.name} already exists`);
+    }
+    return this.personModel.create({ ...dto, name });
   }
 
   async update(id: string, dto: Partial<CreatePersonDto>) {

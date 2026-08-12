@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import moment from 'moment';
@@ -32,6 +32,8 @@ function toRes(doc: any) {
     settled: t.settled ?? false,
     costBasis: t.costBasis ?? 0,
     splitGroupId: t.splitGroupId ?? null,
+    accountId: t.accountId?.toString() ?? null,
+    toAccountId: t.toAccountId?.toString() ?? null,
   };
 }
 
@@ -49,16 +51,24 @@ export class TransactionsService {
     if (filters.search)   where.note = { $regex: filters.search, $options: 'i' };
     if (filters.from || filters.to) {
       where.date = {};
-      if (filters.from) where.date.$gte = moment(filters.from).startOf('day').valueOf();
-      if (filters.to)   where.date.$lte = moment(filters.to).endOf('day').valueOf();
+      // UTC, not server-local time — `date` is stored as UTC midnight, so a
+      // local-time boundary (e.g. the server running in IST, UTC+5:30) would
+      // shift the window by the server's offset, wrongly pulling in records
+      // from the adjacent day/month or excluding the tail end of the range.
+      if (filters.from) where.date.$gte = moment.utc(filters.from).startOf('day').valueOf();
+      if (filters.to)   where.date.$lte = moment.utc(filters.to).endOf('day').valueOf();
     }
     // date is stored day-only (midnight), so same-day rows tie on date —
-    // break the tie by createdAt so the most recently added shows first.
-    const docs = await this.model.find(where).populate('personId').sort({ date: -1, createdAt: -1 });
+    // break the tie by createdAt ascending, so entries appear in the order
+    // you actually added them (oldest first), not "most recently added on
+    // top" — which put backdated batch entries above same-day activity that
+    // was entered earlier in real time.
+    const docs = await this.model.find(where).populate('personId').sort({ date: -1, createdAt: 1 });
     return docs.map(toRes);
   }
 
   async create(dto: CreateTransactionDto) {
+    if (!dto.accountId) throw new BadRequestException('Select an account');
     const created = await this.model.create({
       ...dto,
       date: moment.utc(dto.date, 'YYYY-MM-DD').valueOf(),  // UTC midnight epoch ms — consistent across timezones
@@ -66,6 +76,7 @@ export class TransactionsService {
       borrowId: dto.borrowId ? new Types.ObjectId(dto.borrowId) : undefined,
       interestExpected: dto.interestExpected ?? 0,
       costBasis: dto.costBasis ?? 0,
+      accountId: new Types.ObjectId(dto.accountId),
     });
     const doc = await this.model.findById(created._id).populate('personId');
     return toRes(doc!);
@@ -76,6 +87,7 @@ export class TransactionsService {
     if (dto.date)                    update.date = moment.utc(dto.date, 'YYYY-MM-DD').valueOf();
     if (dto.personId !== undefined)  update.personId = dto.personId ? new Types.ObjectId(dto.personId) : null;
     if (dto.borrowId !== undefined)  update.borrowId = dto.borrowId ? new Types.ObjectId(dto.borrowId) : null;
+    if (dto.accountId !== undefined) update.accountId = dto.accountId ? new Types.ObjectId(dto.accountId) : null;
     const doc = await this.model.findByIdAndUpdate(id, update, { returnDocument: 'after' }).populate('personId');
     return toRes(doc!);
   }
@@ -88,8 +100,10 @@ export class TransactionsService {
   }
 
   async getSummary(month: string) {
-    const from = moment(month, 'YYYY-MM').startOf('month').valueOf();
-    const to   = moment(month, 'YYYY-MM').add(1, 'month').startOf('month').valueOf();
+    // UTC — see findAll() for why: a local-time boundary shifts by the
+    // server's offset from `date`'s actual UTC-midnight storage.
+    const from = moment.utc(month, 'YYYY-MM').startOf('month').valueOf();
+    const to   = moment.utc(month, 'YYYY-MM').add(1, 'month').startOf('month').valueOf();
 
     const [txns, typeConfigs] = await Promise.all([
       this.model.find({ date: { $gte: from, $lt: to } }),

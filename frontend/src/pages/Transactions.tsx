@@ -158,13 +158,16 @@ export default function Transactions() {
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                 {g.items.map((t, i) => {
                   const behavior   = getBehavior(t.type);
+                  const isTransfer = behavior === 'ACCOUNT_TRANSFER';
                   const isPositive = behavior === 'INCOME' || behavior === 'RECEIVE_BACK' || behavior === 'DIVEST' || behavior === 'SPLIT_COLLECT';
                   const icon     = t.category ? getCategoryIcon(t.category) : getTypeIcon(t.type);
                   const typeLbl  = t.category ? getCategoryLabel(t.category) : getTypeLabel(t.type);
                   const personName = t.person?.name;
                   // Person-linked rows: lead with who, not the type key.
                   const label = t.note || (personName ?? typeLbl);
-                  const sub   = [personName ? `${typeLbl} · ${personName}` : typeLbl, PAYMENT_LABELS[t.paymentMethod], formatDate(t.date)].join(' · ');
+                  const sub   = isTransfer
+                    ? [typeLbl, formatDate(t.date)].join(' · ')
+                    : [personName ? `${typeLbl} · ${personName}` : typeLbl, PAYMENT_LABELS[t.paymentMethod], formatDate(t.date)].join(' · ');
                   return (
                     <button key={t.id} onClick={() => setDetail(t)}
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 transition-colors ${i > 0 ? 'border-t border-slate-50' : ''}`}>
@@ -174,8 +177,8 @@ export default function Transactions() {
                         <p className="text-xs text-slate-400 mt-0.5 truncate">{sub}</p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className={`text-sm font-bold ${isPositive ? 'text-emerald-600' : 'text-rose-500'}`}>
-                          {isPositive ? '+' : '−'}{formatAmount(t.amount)}
+                        <p className={`text-sm font-bold ${isTransfer ? 'text-slate-700' : isPositive ? 'text-emerald-600' : 'text-rose-500'}`}>
+                          {isTransfer ? '' : isPositive ? '+' : '−'}{formatAmount(t.amount)}
                         </p>
                         <p className="text-[10px] text-slate-300 mt-0.5 tabular-nums">{formatTime(t.createdAt)}</p>
                       </div>

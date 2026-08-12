@@ -17,13 +17,13 @@ export class SplitsController {
 
   // Create the legs of a shared bill.
   @Post('group')
-  createGroup(@Body() body: { iPaid: boolean; legs: { personId: string; amount: number }[]; note?: string; date?: string; myShare?: number; myShareCategory?: string }) {
+  createGroup(@Body() body: { iPaid: boolean; legs: { personId: string; amount: number }[]; note?: string; date?: string; myShare?: number; myShareCategory?: string; category?: string; accountId?: string }) {
     return this.service.createGroup(body);
   }
 
   @Post('settle')
-  settle(@Body() body: { personId: string; amount?: number }) {
-    return this.service.settle(body.personId, body.amount);
+  settle(@Body() body: { personId: string; amount?: number; accountId?: string; date?: string }) {
+    return this.service.settle(body.personId, body.amount, body.accountId, body.date);
   }
 
   @Delete('entry/:id')

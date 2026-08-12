@@ -4,8 +4,10 @@ import {
   type SplitBalance, type SplitDetail, type SplitLeg,
 } from '../api/splits';
 import { getPersons } from '../api/persons';
+import { getAccounts } from '../api/accounts';
+import { accountLabel } from '../data/banks';
 import { getTransactions, createTransaction, updateTransaction, deleteTransaction } from '../api/transactions';
-import type { Person, Transaction } from '../types';
+import type { Person, Transaction, Account } from '../types';
 import { formatAmount, formatTime, formatDateLongUTC, todayStr, currentMonth, monthRangeFor, groupByDay, collapseSplitGroups, type FeedItem } from '../utils';
 import { Spinner, EmptyState, BottomSheet, DateField, IconCircle, ConfirmModal } from '../components/ui';
 import PeopleTabs from '../components/PeopleTabs';
@@ -81,6 +83,7 @@ export default function Splits() {
   const [month,   setMonth]   = useState(currentMonth());
   const [txns,    setTxns]    = useState<Transaction[]>([]);
   const [friends, setFriends] = useState<Person[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [splits,    setSplits]    = useState<SplitBalance[]>([]);
@@ -99,6 +102,7 @@ export default function Splits() {
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, [month]);
+  useEffect(() => { getAccounts().then(setAccounts).catch(() => {}); }, []);
 
   // Balances are an all-time net position, independent of the selected month.
   const loadBalances = () => {
@@ -296,19 +300,19 @@ export default function Splits() {
       )}
 
       {showAdd && (
-        <AddSplitSheet friends={friends}
+        <AddSplitSheet friends={friends} accounts={accounts}
           onClose={() => setShowAdd(false)}
           onSaved={() => { setShowAdd(false); load(); loadBalances(); }} />
       )}
 
       {feedItem && (
-        <SplitFeedDetailSheet item={feedItem} friends={friends}
+        <SplitFeedDetailSheet item={feedItem} friends={friends} accounts={accounts}
           onClose={() => setFeedItem(null)}
           onChanged={() => { setFeedItem(null); load(); loadBalances(); }} />
       )}
 
       {detailId && (
-        <DetailSheet personId={detailId} name={detailName}
+        <DetailSheet personId={detailId} name={detailName} accounts={accounts}
           onClose={() => setDetailId(null)}
           onChanged={() => { loadBalances(); load(); }} />
       )}
@@ -317,11 +321,17 @@ export default function Splits() {
 }
 
 // ── Add split — two modes: "I paid" (split a bill) and "I owe" (direct) ─────────
-function AddSplitSheet({ friends, onClose, onSaved }: {
-  friends: Person[]; onClose: () => void; onSaved: () => void;
+function AddSplitSheet({ friends, accounts, onClose, onSaved }: {
+  friends: Person[]; accounts: Account[]; onClose: () => void; onSaved: () => void;
 }) {
   const { activeCategories } = useConfig();
   const [mode, setMode] = useState<'paid' | 'owe'>('paid');
+  const [accountId, setAccountId] = useState(() => (accounts.find(a => a.isDefault) ?? accounts[0])?.id ?? '');
+  // Accounts can still be loading when this sheet opens — fill in the
+  // default once they arrive, instead of leaving the picker blank.
+  useEffect(() => {
+    if (!accountId && accounts.length > 0) setAccountId((accounts.find(a => a.isDefault) ?? accounts[0]).id);
+  }, [accounts]);
 
   // ── "I paid" state ──
   const [total,     setTotal]     = useState('');
@@ -373,18 +383,22 @@ function AddSplitSheet({ friends, onClose, onSaved }: {
           setError(`Shares add up to ${formatAmount(allShares)}, but the bill is ${formatAmount(totalN)}`);
           return;
         }
+        if (!accountId) { setError('Select which account you paid from'); return; }
         setSaving(true);
         const myShare = includeMe ? shareOf('me') : 0;
         await createSplitGroup({
           iPaid: true, legs: paidLegs, note: note.trim(), date,
           myShare: myShare > 0 ? myShare : undefined,
           myShareCategory: myShare > 0 ? category : undefined,
+          accountId,
         });
       } else {
         if (!oweId)      { setError('Pick a friend'); return; }
         if (oweAmtN <= 0) { setError('Enter the amount you owe'); return; }
         setSaving(true);
-        await createSplitGroup({ iPaid: false, legs: [{ personId: oweId, amount: oweAmtN }], note: note.trim(), date });
+        await createSplitGroup({
+          iPaid: false, legs: [{ personId: oweId, amount: oweAmtN }], note: note.trim(), date, category,
+        });
       }
       onSaved();
     } catch { setError('Failed to save. Try again.'); setSaving(false); }
@@ -413,9 +427,14 @@ function AddSplitSheet({ friends, onClose, onSaved }: {
           className="w-full text-sm font-semibold text-slate-800 outline-none bg-transparent placeholder:text-slate-300" />
       </div>
 
-      {/* ════════ I PAID ════════ */}
+      {/* ════════ I PAID ════════ — Date → Total bill → Split between → Calculations → Category */}
       {mode === 'paid' && (
         <>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Date</p>
+            <DateField value={date} onChange={setDate} max={todayStr()} />
+          </div>
+
           <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
             <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Total bill</p>
             <div className="flex items-center gap-1">
@@ -426,9 +445,23 @@ function AddSplitSheet({ friends, onClose, onSaved }: {
             </div>
           </div>
 
+          {/* Account — the whole bill leaves this account, whoever it's ultimately for */}
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Date</p>
-            <DateField value={date} onChange={setDate} max={todayStr()} />
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Paid from</p>
+            {accounts.length === 0 ? (
+              <p className="text-xs text-rose-500 font-medium">No accounts yet — add one in Settings → Accounts.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {accounts.map(a => (
+                  <button key={a.id} onClick={() => setAccountId(a.id)}
+                    className={`px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                      accountId === a.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'
+                    }`}>
+                    {accountLabel(a)}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Split between — tap "You" off if it isn't your expense */}
@@ -455,26 +488,6 @@ function AddSplitSheet({ friends, onClose, onSaved }: {
             </div>
             {!includeMe && <p className="text-[10px] text-slate-400 mt-1.5">You're paying only for others — the full bill is owed back to you.</p>}
           </div>
-
-          {/* Category for your own share — only relevant when you're part of the split,
-              since it's what gets recorded as a real expense and feeds Insights/Budgets */}
-          {includeMe && (
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Your share's category</p>
-              <div className="grid grid-cols-4 gap-2">
-                {activeCategories.map(c => {
-                  const active = category === c.key;
-                  return (
-                    <button key={c.key} onClick={() => setCategory(c.key)}
-                      className={`py-2.5 px-1 rounded-xl border flex flex-col items-center gap-1 transition-all ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
-                      <ConfigIcon name={c.icon} size={18} className={active ? 'text-white' : getIconColor(c.icon).text} />
-                      <span className="text-[10px] font-semibold truncate w-full text-center">{c.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Split method + per-person amounts, with the result folded in below */}
           {totalN > 0 && picked.length > 0 && (
@@ -516,12 +529,48 @@ function AddSplitSheet({ friends, onClose, onSaved }: {
               )}
             </div>
           )}
+
+          {/* Category for your own share — only relevant when you're part of the split,
+              since it's what gets recorded as a real expense and feeds Insights/Budgets */}
+          {includeMe && (
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Your share's category</p>
+              <div className="grid grid-cols-4 gap-2">
+                {activeCategories.map(c => {
+                  const active = category === c.key;
+                  return (
+                    <button key={c.key} onClick={() => setCategory(c.key)}
+                      className={`py-2.5 px-1 rounded-xl border flex flex-col items-center gap-1 transition-all ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                      <ConfigIcon name={c.icon} size={18} className={active ? 'text-white' : getIconColor(c.icon).text} />
+                      <span className="text-[10px] font-semibold truncate w-full text-center">{c.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
         </>
       )}
 
-      {/* ════════ I OWE ════════ */}
+      {/* ════════ I OWE ════════ — same field order as "I paid": Date → Amount → Who → Category */}
       {mode === 'owe' && (
         <>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Date</p>
+            <DateField value={date} onChange={setDate} max={todayStr()} />
+          </div>
+
+          <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Amount you owe</p>
+            <div className="flex items-center gap-1">
+              <span className="text-lg font-bold text-slate-400">₹</span>
+              <input type="text" inputMode="decimal" placeholder="0" value={oweAmt}
+                onChange={e => setOweAmt(e.target.value.replace(/[^0-9.]/g, ''))}
+                className="w-full text-xl font-bold text-slate-900 outline-none bg-transparent placeholder:text-slate-300" />
+            </div>
+          </div>
+
           <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
             <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Who paid for you?</p>
             <select value={oweId} onChange={e => setOweId(e.target.value)}
@@ -532,25 +581,27 @@ function AddSplitSheet({ friends, onClose, onSaved }: {
           </div>
 
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Date</p>
-            <DateField value={date} onChange={setDate} max={todayStr()} />
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Category</p>
+            <div className="grid grid-cols-4 gap-2">
+              {activeCategories.map(c => {
+                const active = category === c.key;
+                return (
+                  <button key={c.key} onClick={() => setCategory(c.key)}
+                    className={`py-2.5 px-1 rounded-xl border flex flex-col items-center gap-1 transition-all ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                    <ConfigIcon name={c.icon} size={18} className={active ? 'text-white' : getIconColor(c.icon).text} />
+                    <span className="text-[10px] font-semibold truncate w-full text-center">{c.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="bg-slate-50 rounded-2xl border border-slate-100 p-3 flex flex-col gap-2">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest px-1">Amount you owe</p>
-            <div className="flex items-center gap-1 px-1">
-              <span className="text-lg font-bold text-slate-400">₹</span>
-              <input type="text" inputMode="decimal" placeholder="0" value={oweAmt}
-                onChange={e => setOweAmt(e.target.value.replace(/[^0-9.]/g, ''))}
-                className="w-full text-xl font-bold text-slate-900 outline-none bg-transparent placeholder:text-slate-300" />
+          {oweId && oweAmtN > 0 && (
+            <div className="rounded-2xl px-4 py-3 text-center border bg-rose-50 border-rose-100">
+              <p className="text-xs text-slate-500">You owe {nameOf(oweId)}</p>
+              <p className="text-2xl font-bold mt-1 text-rose-500">{formatAmount(oweAmtN)}</p>
             </div>
-            {oweId && oweAmtN > 0 && (
-              <div className="flex items-center justify-between gap-2 mt-1 pt-2 border-t border-slate-200">
-                <span className="text-xs font-semibold text-rose-500">You owe {nameOf(oweId)}</span>
-                <span className="text-base font-bold text-rose-500">{formatAmount(oweAmtN)}</span>
-              </div>
-            )}
-          </div>
+          )}
         </>
       )}
 
@@ -568,12 +619,17 @@ function AddSplitSheet({ friends, onClose, onSaved }: {
 }
 
 // ── Per-friend detail: history + settle ────────────────────────────────────────
-function DetailSheet({ personId, name, onClose, onChanged }: {
-  personId: string; name: string; onClose: () => void; onChanged: () => void;
+function DetailSheet({ personId, name, accounts, onClose, onChanged }: {
+  personId: string; name: string; accounts: Account[]; onClose: () => void; onChanged: () => void;
 }) {
   const [detail, setDetail] = useState<SplitDetail | null>(null);
   const [settleOpen, setSettleOpen] = useState(false);
   const [settleAmt, setSettleAmt] = useState('');
+  const [settleAccountId, setSettleAccountId] = useState(() => (accounts.find(a => a.isDefault) ?? accounts[0])?.id ?? '');
+  useEffect(() => {
+    if (!settleAccountId && accounts.length > 0) setSettleAccountId((accounts.find(a => a.isDefault) ?? accounts[0]).id);
+  }, [accounts]);
+  const [settleDate, setSettleDate] = useState(todayStr());
   const [settleErr, setSettleErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -584,15 +640,16 @@ function DetailSheet({ personId, name, onClose, onChanged }: {
   const owes = balance >= 0;
   const max = Math.abs(balance);
 
-  const openSettle = () => { setSettleAmt(String(max)); setSettleErr(''); setSettleOpen(true); };
+  const openSettle = () => { setSettleAmt(String(max)); setSettleDate(todayStr()); setSettleErr(''); setSettleOpen(true); };
   const doSettle = async () => {
     const amt = parseFloat(settleAmt);
     if (isNaN(amt) || amt <= 0)  { setSettleErr('Enter an amount'); return; }
     if (amt > max + 0.01)        { setSettleErr(`Can't exceed ${formatAmount(max)}`); return; }
+    if (!settleAccountId)        { setSettleErr('Select an account'); return; }
     setSettleErr(''); setBusy(true);
     try {
       // Full amount → omit so the backend clears it exactly.
-      await settleSplit(personId, amt >= max - 0.01 ? undefined : amt);
+      await settleSplit(personId, amt >= max - 0.01 ? undefined : amt, settleAccountId, settleDate);
       setSettleOpen(false); await load(); onChanged();
     } finally { setBusy(false); }
   };
@@ -643,6 +700,27 @@ function DetailSheet({ personId, name, onClose, onChanged }: {
               );
             })}
           </div>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Date</p>
+            <DateField value={settleDate} onChange={setSettleDate} max={todayStr()} />
+          </div>
+          {accounts.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">
+                {owes ? 'Into which account?' : 'From which account?'}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {accounts.map(a => (
+                  <button key={a.id} onClick={() => setSettleAccountId(a.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                      settleAccountId === a.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200'
+                    }`}>
+                    {accountLabel(a)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {settleErr && <p className="text-xs text-rose-500 font-medium">{settleErr}</p>}
           <div className="flex gap-2">
             <button onClick={() => setSettleOpen(false)}
@@ -661,15 +739,15 @@ function DetailSheet({ personId, name, onClose, onChanged }: {
 
 // ── Feed row detail — a group shows the per-person breakdown (tap a leg to
 // drill in); a single entry goes straight to view/edit ─────────────────────────
-function SplitFeedDetailSheet({ item, friends, onClose, onChanged }: {
-  item: FeedItem; friends: Person[]; onClose: () => void; onChanged: () => void;
+function SplitFeedDetailSheet({ item, friends, accounts, onClose, onChanged }: {
+  item: FeedItem; friends: Person[]; accounts: Account[]; onClose: () => void; onChanged: () => void;
 }) {
   const { getBehavior, getTypeIcon } = useConfig();
   const [editing, setEditing] = useState(false);
 
   // Single entries are already "one row = one thing" — go straight to view/edit.
   if (item.kind === 'txn') {
-    return <SplitEntrySheet entry={item.t} onClose={onClose} onChanged={onChanged} />;
+    return <SplitEntrySheet entry={item.t} accounts={accounts} onClose={onClose} onChanged={onChanged} />;
   }
 
   const legs = item.legs;
@@ -678,7 +756,7 @@ function SplitFeedDetailSheet({ item, friends, onClose, onChanged }: {
   // person-wise — no more drilling into each leg separately to fix it.
   if (editing) {
     return (
-      <EditSplitGroupSheet legs={legs} friends={friends}
+      <EditSplitGroupSheet legs={legs} friends={friends} accounts={accounts}
         onBack={() => setEditing(false)}
         onChanged={onChanged} />
     );
@@ -723,8 +801,8 @@ function SplitFeedDetailSheet({ item, friends, onClose, onChanged }: {
 // Diffs against the original legs on save: updates people who are still in
 // the split, deletes anyone removed, creates legs for anyone newly added,
 // and creates/updates/deletes your own EXPENSE share leg as "You" is toggled.
-function EditSplitGroupSheet({ legs, friends, onBack, onChanged }: {
-  legs: Transaction[]; friends: Person[]; onBack: () => void; onChanged: () => void;
+function EditSplitGroupSheet({ legs, friends, accounts, onBack, onChanged }: {
+  legs: Transaction[]; friends: Person[]; accounts: Account[]; onBack: () => void; onChanged: () => void;
 }) {
   const { config, activeCategories } = useConfig();
   const friendLeg  = legs.find(l => l.person) ?? legs[0];
@@ -735,6 +813,12 @@ function EditSplitGroupSheet({ legs, friends, onBack, onChanged }: {
   const [note,      setNote]      = useState(friendLeg.note ?? '');
   const [total,     setTotal]     = useState(String(legs.reduce((s, l) => s + l.amount, 0)));
   const [date,      setDate]      = useState(legs[0].date.substring(0, 10));
+  // Pre-filled from whichever existing leg already has one — falling back to
+  // the default account for legacy groups that predate accounts (accountId
+  // null on every existing leg).
+  const [accountId, setAccountId] = useState(
+    friendLeg.accountId || expenseLeg?.accountId || (accounts.find(a => a.isDefault) ?? accounts[0])?.id || '',
+  );
   const [includeMe, setIncludeMe] = useState(!!expenseLeg);
   const [category,  setCategory]  = useState(expenseLeg?.category ?? activeCategories[0]?.key ?? '');
   const [picked,    setPicked]    = useState<string[]>(legs.filter(l => l.person).map(l => l.person!.id));
@@ -769,6 +853,7 @@ function EditSplitGroupSheet({ legs, friends, onBack, onChanged }: {
       setError(`Shares add up to ${formatAmount(allShares)}, but the bill is ${formatAmount(totalN)}`);
       return;
     }
+    if (!accountId) { setError('Select which account you paid from'); return; }
 
     setSaving(true);
     try {
@@ -783,25 +868,25 @@ function EditSplitGroupSheet({ legs, friends, onBack, onChanged }: {
         const leg = existingFriendLegs.get(personId);
         const amt = shareOf(personId);
         if (leg) {
-          ops.push(updateTransaction(leg.id, { amount: amt, date, note: noteTrim }));
+          ops.push(updateTransaction(leg.id, { amount: amt, date, note: noteTrim, accountId }));
         } else {
           ops.push(createTransaction({
             type: legType, amount: amt, date, paymentMethod: 'CASH',
-            personId, note: noteTrim, splitGroupId: groupId,
+            personId, note: noteTrim, splitGroupId: groupId, accountId,
           } as Parameters<typeof createTransaction>[0] & { splitGroupId: string }));
         }
       }
 
       const myShare = includeMe ? shareOf('me') : 0;
       if (expenseLeg) {
-        if (myShare > 0) ops.push(updateTransaction(expenseLeg.id, { amount: myShare, date, category, note: `${noteTrim} — your share` }));
+        if (myShare > 0) ops.push(updateTransaction(expenseLeg.id, { amount: myShare, date, category, note: `${noteTrim} — your share`, accountId }));
         else             ops.push(deleteTransaction(expenseLeg.id));
       } else if (myShare > 0) {
         const expenseType = config.types.find(t => t.behavior === 'EXPENSE')?.key;
         if (expenseType) {
           ops.push(createTransaction({
             type: expenseType, amount: myShare, date, category, paymentMethod: 'CASH',
-            note: `${noteTrim} — your share`, splitGroupId: groupId,
+            note: `${noteTrim} — your share`, splitGroupId: groupId, accountId,
           } as Parameters<typeof createTransaction>[0] & { splitGroupId: string }));
         }
       }
@@ -831,6 +916,25 @@ function EditSplitGroupSheet({ legs, friends, onBack, onChanged }: {
             onChange={e => setTotal(e.target.value.replace(/[^0-9.]/g, ''))}
             className="w-full text-xl font-bold text-slate-900 outline-none bg-transparent" />
         </div>
+      </div>
+
+      {/* Account — the whole bill leaves this account, whoever it's ultimately for */}
+      <div>
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Paid from</p>
+        {accounts.length === 0 ? (
+          <p className="text-xs text-rose-500 font-medium">No accounts yet — add one in Settings → Accounts.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {accounts.map(a => (
+              <button key={a.id} onClick={() => setAccountId(a.id)}
+                className={`px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                  accountId === a.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'
+                }`}>
+                {accountLabel(a)}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div>
@@ -942,22 +1046,40 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 // ── View → Edit (auto-populated) → Delete for a single split-related transaction ─
-function SplitEntrySheet({ entry, onBack, onClose, onChanged }: {
-  entry: Transaction; onBack?: () => void; onClose: () => void; onChanged: () => void;
+function SplitEntrySheet({ entry, accounts, onBack, onClose, onChanged }: {
+  entry: Transaction; accounts: Account[]; onBack?: () => void; onClose: () => void; onChanged: () => void;
 }) {
-  const { config, getBehavior, getTypeIcon } = useConfig();
+  const { config, activeCategories, getBehavior, getTypeIcon, getCategoryLabel } = useConfig();
 
-  const [mode,    setMode]    = useState<'view' | 'edit'>('view');
-  const [amount,  setAmount]  = useState(String(entry.amount));
-  const [date,    setDate]    = useState(entry.date.substring(0, 10));
-  const [note,    setNote]    = useState(entry.note ?? '');
-  const [type,    setType]    = useState(entry.type);
-  const [saving,  setSaving]  = useState(false);
-  const [error,   setError]   = useState('');
+  const [mode,      setMode]      = useState<'view' | 'edit'>('view');
+  const [amount,    setAmount]    = useState(String(entry.amount));
+  const [date,      setDate]      = useState(entry.date.substring(0, 10));
+  const [note,      setNote]      = useState(entry.note ?? '');
+  const [type,      setType]      = useState(entry.type);
+  const [category,  setCategory]  = useState(entry.category ?? activeCategories[0]?.key ?? '');
+  const [accountId, setAccountId] = useState(entry.accountId ?? '');
+  const [saving,    setSaving]    = useState(false);
+  const [error,     setError]     = useState('');
   const [confirmDel, setConfirmDel] = useState(false);
 
   const behavior = getBehavior(entry.type);
   const isPositive = SPLIT_POSITIVE.has(getBehavior(type));
+  // Only "I owe" legs carry a category (what the debt is for) — friend legs
+  // and settlements aren't your own spending, so a category isn't meaningful.
+  const showCategory = getBehavior(type) === 'SPLIT_OWE';
+  // Every direction except "I owe" moves real cash (paying the bill,
+  // collecting a repayment, or paying one back) — "I owe" itself doesn't,
+  // since no money of yours moved yet. Auto-fill the default account
+  // whenever this entry needs one and doesn't have one yet (a legacy entry
+  // predating accounts, or just switched into a cash-moving direction).
+  const showAccount = getBehavior(type) !== 'SPLIT_OWE';
+  useEffect(() => {
+    if (showAccount && !accountId) {
+      const def = accounts.find(a => a.isDefault) ?? accounts[0];
+      if (def) setAccountId(def.id);
+    }
+  }, [showAccount, accountId, accounts]);
+  const accountEntity = accounts.find(a => a.id === entry.accountId);
 
   // Which two directions this entry can be toggled between — legs (who paid
   // the bill) and settlements (who paid back) are separate pairs, resolved
@@ -978,9 +1100,14 @@ function SplitEntrySheet({ entry, onBack, onClose, onChanged }: {
   const handleSave = async () => {
     const amt = Number(amount);
     if (!amount || isNaN(amt) || amt <= 0) { setError('Enter a valid amount'); return; }
+    if (showAccount && !accountId) { setError('Select an account'); return; }
     setSaving(true); setError('');
     try {
-      await updateTransaction(entry.id, { amount: amt, date, type, note: note.trim() || undefined });
+      await updateTransaction(entry.id, {
+        amount: amt, date, type, note: note.trim() || undefined,
+        category: getBehavior(type) === 'SPLIT_OWE' ? category : undefined,
+        accountId: showAccount ? accountId : undefined,
+      });
       onChanged();
     } catch { setError('Failed to save. Try again.'); setSaving(false); }
   };
@@ -1019,6 +1146,8 @@ function SplitEntrySheet({ entry, onBack, onClose, onChanged }: {
               <Row label="Who">{entry.person?.name ?? 'You'}</Row>
               <Row label="Direction">{labelFor(behavior)}</Row>
               <Row label="Date">{formatDateLongUTC(entry.date)}</Row>
+              {entry.category && <Row label="Category">{getCategoryLabel(entry.category)}</Row>}
+              {accountEntity && <Row label="Account">{accountLabel(accountEntity)}</Row>}
               {entry.note && <Row label="Note">{entry.note}</Row>}
             </div>
 
@@ -1059,6 +1188,38 @@ function SplitEntrySheet({ entry, onBack, onClose, onChanged }: {
                         type === o.key ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'
                       }`}>
                       {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {showCategory && (
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Category</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {activeCategories.map(c => {
+                    const active = category === c.key;
+                    return (
+                      <button key={c.key} onClick={() => setCategory(c.key)}
+                        className={`py-2.5 px-1 rounded-xl border flex flex-col items-center gap-1 transition-all ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                        <ConfigIcon name={c.icon} size={18} className={active ? 'text-white' : getIconColor(c.icon).text} />
+                        <span className="text-[10px] font-semibold truncate w-full text-center">{c.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {showAccount && (
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Account</p>
+                <div className="flex flex-wrap gap-2">
+                  {accounts.map(a => (
+                    <button key={a.id} onClick={() => setAccountId(a.id)}
+                      className={`px-3 py-2 rounded-xl text-sm font-semibold border transition-all ${accountId === a.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                      {accountLabel(a)}
                     </button>
                   ))}
                 </div>

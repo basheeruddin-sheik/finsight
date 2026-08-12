@@ -9,6 +9,7 @@ import { Person, PersonDocument } from '../schemas/person.schema';
 import { Budget, BudgetDocument } from '../schemas/budget.schema';
 import { SplitBalance, SplitBalanceDocument } from '../schemas/split-balance.schema';
 import { SplitEntry, SplitEntryDocument } from '../schemas/split-entry.schema';
+import { Account, AccountDocument } from '../schemas/account.schema';
 import { RequestContext } from '../context/request-context';
 import { DEFAULT_TYPES, DEFAULT_CATEGORIES } from '../config/config.defaults';
 
@@ -24,6 +25,7 @@ export class OnboardingService implements OnApplicationBootstrap {
     @InjectModel(Budget.name)       private budget: Model<BudgetDocument>,
     @InjectModel(SplitBalance.name) private split: Model<SplitBalanceDocument>,
     @InjectModel(SplitEntry.name)   private splitEntry: Model<SplitEntryDocument>,
+    @InjectModel(Account.name)      private account: Model<AccountDocument>,
   ) {}
 
   // Rebuild indexes so the userId-compound unique indexes replace the old ones.
@@ -150,6 +152,18 @@ export class OnboardingService implements OnApplicationBootstrap {
     if (normalized.modifiedCount > 0) {
       this.logger.log(`Normalized ${normalized.modifiedCount} BORROW_WRITEOFF dates to UTC midnight`);
     }
+
+    // Same fix for split settle-ups (SplitsService.settle() used Date.now()
+    // before it was corrected) — a real timestamp here outranks same-day
+    // midnight-dated transactions in the {date:-1, createdAt:-1} sort no
+    // matter when they actually happened, scrambling the Home/Splits feed.
+    const settlesNormalized = await this.txn.collection.updateMany(
+      { type: { $in: ['SPLIT_COLLECTED', 'SPLIT_REPAID'] }, date: { $not: { $eq: null } } } as any,
+      [{ $set: { date: { $subtract: ['$date', { $mod: ['$date', 86400000] }] } } }],
+    );
+    if (settlesNormalized.modifiedCount > 0) {
+      this.logger.log(`Normalized ${settlesNormalized.modifiedCount} split settle-up dates to UTC midnight`);
+    }
   }
 
   // Idempotent: moves any OPENING_BALANCE / "Opening balance" investment or borrow
@@ -207,7 +221,28 @@ export class OnboardingService implements OnApplicationBootstrap {
         // Existing user — upsert any built-ins added since their account was created.
         await this.upsertMissingBuiltins(userId);
       }
+      await this.ensureDefaultAccount(userId);
     });
+  }
+
+  // Self-heals the "exactly one default account" invariant. We never
+  // auto-create a placeholder account here — the user adds their own real
+  // bank accounts from Settings → Accounts. This only fixes the default
+  // flag: promotes the oldest account if none is marked default (e.g. it
+  // got archived), and collapses duplicate defaults down to one (a past
+  // race, since `ensureUser` fires from several parallel requests on a
+  // user's first page load, could otherwise mark more than one default).
+  private async ensureDefaultAccount(userId: string): Promise<void> {
+    const defaults = await this.account.find({ userId, isDefault: true }).sort({ createdAt: 1 });
+    if (defaults.length === 1) return;
+    if (defaults.length > 1) {
+      const [, ...extra] = defaults;
+      await this.account.updateMany({ _id: { $in: extra.map(d => d._id) } }, { isDefault: false });
+      this.logger.warn(`Fixed ${extra.length} duplicate default account(s) for user ${userId}`);
+      return;
+    }
+    const existing = await this.account.findOne({ userId }).sort({ createdAt: 1 });
+    if (existing) await this.account.findByIdAndUpdate(existing._id, { isDefault: true });
   }
 
   // Insert any DEFAULT_TYPES / DEFAULT_CATEGORIES the user doesn't have yet.

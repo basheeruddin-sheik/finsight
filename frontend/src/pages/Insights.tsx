@@ -6,7 +6,10 @@ import {
   ComposedChart,
 } from 'recharts';
 import { getSavingsRateTrend, getMonthlyBreakdown, getNetWorth } from '../api/reports';
-import type { SavingsRateMonth, MonthlyBreakdown, NetWorth, PaymentMethod } from '../types';
+import { getAccounts } from '../api/accounts';
+import { accountLabel } from '../data/banks';
+import { BankBadge } from '../components/BankBadge';
+import type { SavingsRateMonth, MonthlyBreakdown, NetWorth, PaymentMethod, Account } from '../types';
 import { formatAmount, currentMonth, PAYMENT_LABELS } from '../utils';
 import { useConfig } from '../context/ConfigContext';
 import { Spinner } from '../components/ui';
@@ -186,7 +189,7 @@ export default function Insights() {
   const { getCategoryLabel, getCategoryIcon } = useConfig();
 
   // Period state
-  const [period, setPeriod] = useState<Period>('6M');
+  const [period, setPeriod] = useState<Period>('1M');
   // Custom range — default to last 3 months
   const [fromMonth, setFromMonth] = useState(() => addMonths(currentMonth(), -2));
   const [toMonth,   setToMonth]   = useState(currentMonth());
@@ -195,6 +198,7 @@ export default function Insights() {
   const [fullTrend,     setFullTrend]     = useState<SavingsRateMonth[]>([]);
   const [breakdown,     setBreakdown]     = useState<MonthlyBreakdown | null>(null);
   const [netWorth,      setNetWorth]      = useState<NetWorth | null>(null);
+  const [accounts,      setAccounts]      = useState<Account[]>([]);
   const [baseLoading,   setBaseLoading]   = useState(true);
   const [periodLoading, setPeriodLoading] = useState(false);
 
@@ -202,8 +206,8 @@ export default function Insights() {
 
   // Load base data (trend + portfolio) once
   useEffect(() => {
-    Promise.all([getSavingsRateTrend(36), getNetWorth()])
-      .then(([t, nw]) => { setFullTrend(t); setNetWorth(nw); })
+    Promise.all([getSavingsRateTrend(36), getNetWorth(), getAccounts()])
+      .then(([t, nw, accs]) => { setFullTrend(t); setNetWorth(nw); setAccounts(accs); })
       .finally(() => setBaseLoading(false));
   }, []);
 
@@ -696,6 +700,39 @@ export default function Insights() {
                 </p>
               )}
             </Card>
+
+            {/* ── Account balances ── */}
+            {accounts.length > 0 && (
+              <Card>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Accounts</p>
+                  <button onClick={() => navigate('/accounts')}
+                    className="flex items-center gap-0.5 text-[11px] font-semibold text-indigo-600 active:opacity-70">
+                    Manage <ChevronRight size={12} strokeWidth={2.5} />
+                  </button>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {accounts.map(a => (
+                    <div key={a.id} className="flex items-center gap-3">
+                      <BankBadge bank={a.bank} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-700 truncate">{accountLabel(a)}</p>
+                        {a.isDefault && <p className="text-[10px] text-amber-600 font-semibold mt-0.5">Default</p>}
+                      </div>
+                      <span className={`text-sm font-bold shrink-0 ${a.balance < 0 ? 'text-rose-500' : 'text-slate-800'}`}>
+                        {formatAmount(a.balance)}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="border-t border-slate-100 pt-2.5 flex items-center justify-between">
+                    <span className="text-sm font-bold text-slate-700">Total across accounts</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {formatAmount(accounts.reduce((s, a) => s + a.balance, 0))}
+                    </span>
+                  </div>
+                </div>
+              </Card>
+            )}
 
             {/* ── Realized gains (only once something has been sold) ── */}
             {netWorth.salesProceeds > 0 && (() => {

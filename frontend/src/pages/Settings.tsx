@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getTransactions } from '../api/transactions';
+import { getAccounts } from '../api/accounts';
+import { formatAmount } from '../utils';
 import { updateType, updateCategory, addCategory, addType, archiveType, restoreType, archiveCategory, restoreCategory } from '../api/config';
 import { getPersons, createPerson, updatePerson, archivePerson, restorePerson } from '../api/persons';
 import { useConfig } from '../context/ConfigContext';
 import { useTheme } from '../context/ThemeContext';
-import type { Behavior, TypeConfig, CategoryConfig, Person } from '../types';
+import type { Behavior, TypeConfig, CategoryConfig, Person, Account } from '../types';
 import { ConfirmModal } from '../components/ui';
 import { ConfigIcon, IconBadge, getIconColor, CONFIG_ICON_GROUPS } from '../components/configIcons';
-import { X, ChevronDown, User, Users, Plus, Pencil, Trash2, Archive, RotateCcw, Sun, Moon, LogOut, PiggyBank, ChevronRight, type LucideIcon } from 'lucide-react';
+import { X, ChevronDown, User, Users, Plus, Pencil, Trash2, Archive, RotateCcw, Sun, Moon, LogOut, PiggyBank, Landmark, ChevronRight, type LucideIcon } from 'lucide-react';
 import { useAuth0 } from '@auth0/auth0-react';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -484,6 +486,9 @@ export default function Settings() {
   const [obInvCount,  setObInvCount]  = useState(0);
   const [obLentCount, setObLentCount] = useState(0);
 
+  // Accounts summary
+  const [accounts, setAccounts] = useState<Account[]>([]);
+
   const loadPersons = async () => {
     try {
       const [active, arch] = await Promise.all([getPersons(), getPersons(undefined, true)]);
@@ -504,7 +509,11 @@ export default function Settings() {
     } catch { /* silent */ }
   };
 
-  useEffect(() => { loadPersons(); loadOpeningBalances(); }, []);
+  const loadAccounts = async () => {
+    try { setAccounts(await getAccounts()); } catch { /* silent */ }
+  };
+
+  useEffect(() => { loadPersons(); loadOpeningBalances(); loadAccounts(); }, []);
 
   const close   = () => setSheet(null);
   const showErr = (msg: string) => setError(msg);
@@ -635,6 +644,24 @@ export default function Settings() {
                       </span>
                     )}
                   </div>
+                )}
+              </div>
+              <ChevronRight className="text-slate-300 shrink-0" size={18} />
+            </button>
+            <div className="h-px bg-slate-50 mx-4" />
+            <button onClick={() => navigate('/accounts')}
+              className="w-full p-4 flex items-center gap-3 text-left active:bg-slate-50">
+              <div className="w-9 h-9 rounded-xl bg-teal-50 flex items-center justify-center shrink-0">
+                <Landmark className="text-teal-600" size={18} strokeWidth={2} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-800">Accounts</p>
+                {accounts.length === 0 ? (
+                  <p className="text-xs text-slate-400">Track balances across bank accounts &amp; wallets</p>
+                ) : (
+                  <p className="text-xs text-slate-400">
+                    {accounts.length} account{accounts.length > 1 ? 's' : ''} · {formatAmount(accounts.reduce((s, a) => s + a.balance, 0))}
+                  </p>
                 )}
               </div>
               <ChevronRight className="text-slate-300 shrink-0" size={18} />

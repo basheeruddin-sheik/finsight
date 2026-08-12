@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
-import { createPerson } from '../api/persons';
+import { createPerson, getPersons } from '../api/persons';
 import { getTransactions, createTransaction, updateTransaction, deleteTransaction } from '../api/transactions';
+import { getAccounts } from '../api/accounts';
 import type { Transaction } from '../types';
 import { formatAmount } from '../utils';
 import { LogoMark } from '../components/Logo';
@@ -37,6 +38,20 @@ const INVEST_CATS = [
 
 function uid() { return Math.random().toString(36).slice(2); }
 
+// Person names must be unique (per type) — if a row's name matches someone
+// who already exists (e.g. re-submitting after a partial failure, or the
+// person was added elsewhere already), reuse them instead of erroring out.
+async function getOrCreatePerson(name: string, type: 'FRIEND' | 'FAMILY') {
+  try {
+    return await createPerson({ name, type });
+  } catch (e: any) {
+    if (e?.response?.status !== 400) throw e;
+    const existing = (await getPersons(type)).find(p => p.name.toLowerCase() === name.toLowerCase());
+    if (!existing) throw e;
+    return existing;
+  }
+}
+
 // ── Helpers to fetch existing opening balance entries ─────────────────────────
 async function fetchOpeningData() {
   const [obTxns, investTxns, borrowTxns] = await Promise.all([
@@ -66,9 +81,11 @@ export default function Setup() {
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState('');
   const [saved,       setSaved]       = useState(false);
+  const [defaultAccountId, setDefaultAccountId] = useState<string | undefined>(undefined);
 
   // ── Load existing data ──────────────────────────────────────────────────────
   useEffect(() => {
+    getAccounts().then(accs => setDefaultAccountId((accs.find(a => a.isDefault) ?? accs[0])?.id)).catch(() => {});
     fetchOpeningData()
       .then(({ obTxns, investTxns, borrowTxns }) => {
         setExistingOB(obTxns);
@@ -131,7 +148,7 @@ export default function Setup() {
         // New savings entry
         await createTransaction({
           type: 'OPENING_BALANCE', amount: savingsAmt, date: OPENING_DATE,
-          paymentMethod: 'BANK_TRANSFER', note: 'Opening balance',
+          paymentMethod: 'BANK_TRANSFER', note: 'Opening balance', accountId: defaultAccountId,
         });
       } else if (existingOB.length > 1) {
         // Multiple entries (edge case) — delete all and recreate
@@ -159,7 +176,7 @@ export default function Setup() {
           await createTransaction({
             type: 'INVESTMENT', amount: amt, date: OPENING_DATE,
             category: row.category, paymentMethod: 'BANK_TRANSFER',
-            note: 'Opening balance — existing investment',
+            note: 'Opening balance — existing investment', accountId: defaultAccountId,
           });
         }
       }
@@ -169,11 +186,11 @@ export default function Setup() {
         const amt  = Number(row.amount.replace(/,/g, ''));
         const name = row.name.trim();
         if (!name || amt <= 0) continue;
-        const person = await createPerson({ name, type: row.personType });
+        const person = await getOrCreatePerson(name, row.personType);
         await createTransaction({
           type: 'BORROW_GIVEN', amount: amt, date: OPENING_DATE,
           paymentMethod: 'CASH', personId: person.id,
-          note: 'Opening balance — existing loan',
+          note: 'Opening balance — existing loan', accountId: defaultAccountId,
         });
       }
 

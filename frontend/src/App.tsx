@@ -7,6 +7,7 @@ import Borrows from './pages/Borrows';
 import Family from './pages/Family';
 import Splits from './pages/Splits';
 import Persons from './pages/Persons';
+import Accounts from './pages/Accounts';
 import Reports from './pages/Reports';
 import Budgets from './pages/Budgets';
 import Insights from './pages/Insights';
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="/family"      element={<Family />} />
             <Route path="/splits"      element={<Splits />} />
             <Route path="/persons"     element={<Persons />} />
+            <Route path="/accounts"    element={<Accounts />} />
             <Route path="/reports"     element={<Reports />} />
             <Route path="/budgets"     element={<Budgets />} />
             <Route path="/settings"    element={<Settings />} />

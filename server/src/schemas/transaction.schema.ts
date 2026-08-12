@@ -20,6 +20,13 @@ export class Transaction {
   @Prop({ default: false }) settled: boolean;
   @Prop({ default: 0 })     costBasis: number;  // INVESTMENT_RETURN only: original amount invested being returned
   @Prop({ default: null })  splitGroupId: string;  // links the per-friend legs of one shared bill
+
+  // Which bank/cash account this transaction moved money in/out of. Older
+  // transactions predate this field and stay null — they're excluded from
+  // per-account balances but otherwise unaffected.
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Account', default: null }) accountId: Types.ObjectId;
+  // ACCOUNT_TRANSFER only: the destination account (accountId is the source).
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Account', default: null }) toAccountId: Types.ObjectId;
 }
 
 export const TransactionSchema = SchemaFactory.createForClass(Transaction);
