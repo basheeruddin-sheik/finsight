@@ -34,6 +34,7 @@ export class OnboardingService implements OnApplicationBootstrap {
     await this.migrateOpeningBalanceDates();
     await this.migrateSplitBalancesToEntries();
     await this.migrateSplitEntriesToTransactions();
+    await this.migrateAccountTypes();
     for (const m of [this.config, this.txn, this.person, this.budget, this.split, this.splitEntry]) {
       try { await m.syncIndexes(); }
       catch (e) { this.logger.warn(`syncIndexes(${m.modelName}) failed: ${(e as Error).message}`); }
@@ -191,6 +192,20 @@ export class OnboardingService implements OnApplicationBootstrap {
 
     const total = fixes.reduce((s, r) => s + r.modifiedCount, 0);
     if (total > 0) this.logger.log(`Backdated ${total} opening balance transaction(s) to 2000-01-01`);
+  }
+
+  // Idempotent: accounts created before the Bank/Wallet distinction existed
+  // have no `type` field stored in the DB (the API layer already defaults
+  // it to 'BANK' on read, but persisting it explicitly avoids relying on
+  // that fallback everywhere and lets `type` be queried/indexed directly).
+  private async migrateAccountTypes() {
+    const result = await this.account.collection.updateMany(
+      { type: { $exists: false } } as any,
+      { $set: { type: 'BANK' } },
+    );
+    if (result.modifiedCount > 0) {
+      this.logger.log(`Backfilled type='BANK' on ${result.modifiedCount} account(s)`);
+    }
   }
 
   // Called once per user per server boot (memoized in `ready`).

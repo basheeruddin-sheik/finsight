@@ -32,7 +32,33 @@ export const BANKS: BankOption[] = [
   { key: 'OTHER',     label: 'Other',                   short: '?',      color: 'bg-slate-500' },
 ];
 
-export const getBank = (key: string) => BANKS.find(b => b.key === key) ?? BANKS[BANKS.length - 1];
+// Stored-value wallets — a separate pool of money from a bank, usually
+// funded FROM a bank account (an Account Transfer). Same shape as BANKS so
+// they share BankBadge / accountLabel / the same picker UI, just resolved
+// from a different list based on the account's `type`.
+export const WALLETS: BankOption[] = [
+  { key: 'AMAZON_PAY',     label: 'Amazon Pay',      short: 'AMZN',  color: 'bg-orange-500', domain: 'amazon.in' },
+  { key: 'PAYTM_WALLET',   label: 'Paytm Wallet',    short: 'PAYTM', color: 'bg-sky-600',     domain: 'paytm.com' },
+  { key: 'PHONEPE_WALLET', label: 'PhonePe Wallet',  short: 'PHPE',  color: 'bg-violet-600',  domain: 'phonepe.com' },
+  { key: 'MOBIKWIK',       label: 'MobiKwik',        short: 'MBK',   color: 'bg-blue-600',    domain: 'mobikwik.com' },
+  { key: 'FREECHARGE',     label: 'Freecharge',      short: 'FC',    color: 'bg-orange-600',  domain: 'freecharge.in' },
+  { key: 'OLA_MONEY',      label: 'Ola Money',       short: 'OLA',   color: 'bg-yellow-600',  domain: 'olamoney.com' },
+  { key: 'JIO_MONEY',      label: 'JioMoney',        short: 'JIO',   color: 'bg-blue-800',    domain: 'jio.com' },
+  { key: 'OTHER',          label: 'Other',           short: '?',     color: 'bg-slate-500' },
+];
+
+// Physical cash on hand — there's only ever one kind, so there's no picker
+// list for it (unlike BANKS/WALLETS). A CASH account's `bank` key is always
+// 'CASH'; give it a custom name (e.g. "Petty Cash") if you track more than one.
+export const CASH_OPTION: BankOption = { key: 'CASH', label: 'Cash', short: '₹', color: 'bg-emerald-600' };
+
+export const getBank   = (key: string) => BANKS.find(b => b.key === key) ?? BANKS[BANKS.length - 1];
+export const getWallet = (key: string) => WALLETS.find(w => w.key === key) ?? WALLETS[WALLETS.length - 1];
+
+// Resolves an institution regardless of whether it's a bank, a wallet, or
+// cash. Defaults to BANK for accounts predating the `type` field.
+export const getInstitution = (type: string | undefined, key: string): BankOption =>
+  type === 'WALLET' ? getWallet(key) : type === 'CASH' ? CASH_OPTION : getBank(key);
 
 // Real logo, fetched by domain via Google's public favicon service — we
 // don't ship bank logo image files ourselves. (Clearbit's logo API, tried
@@ -43,8 +69,9 @@ export const getBank = (key: string) => BANKS.find(b => b.key === key) ?? BANKS[
 export const logoUrl = (domain: string) => `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
 
 // Display label for an account: "HDFC Bank •••• 4821", or just the bank name
-// (or custom name, for "Other") when no last-4 was given.
-export function accountLabel(a: { bank: string; last4?: string | null; customName?: string | null }): string {
-  const base = a.bank === 'OTHER' && a.customName ? a.customName : getBank(a.bank).label;
+// (or custom name, for "Other"/Cash) when no last-4 was given.
+export function accountLabel(a: { type?: string; bank: string; last4?: string | null; customName?: string | null }): string {
+  const inst = getInstitution(a.type, a.bank);
+  const base = (a.bank === 'OTHER' || a.type === 'CASH') && a.customName ? a.customName : inst.label;
   return a.last4 ? `${base} •••• ${a.last4}` : base;
 }

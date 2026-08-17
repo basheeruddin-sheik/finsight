@@ -9,7 +9,7 @@ import { BottomSheet, ConfirmModal, DateField } from './ui';
 import { ConfigIcon, IconBadge, getIconColor } from './configIcons';
 import { Pencil, Trash2 } from 'lucide-react';
 
-const PAYMENTS: PaymentMethod[] = ['PHONEPE', 'GPAY', 'PAYTM', 'CASH', 'CREDIT_CARD', 'BANK_TRANSFER', 'OTHER'];
+const PAYMENTS: PaymentMethod[] = ['PHONEPE', 'GPAY', 'PAYTM', 'CASH', 'CREDIT_CARD', 'BANK_TRANSFER', 'WALLET'];
 
 // `createdAt` is a real moment in time — local timezone is correct here,
 // unlike `date` (a day-only value), which uses the UTC-safe formatDateLongUTC.
@@ -52,13 +52,27 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
 
   useEffect(() => { getAccounts().then(setAccounts).catch(() => {}); }, []);
   // Legacy transactions (predating accounts) have no accountId — pre-select
-  // the default account instead of leaving the edit picker blank.
+  // the default account matching the current payment method's filter,
+  // instead of leaving the edit picker blank.
   useEffect(() => {
-    if (!accountId && accounts.length > 0) {
-      const def = accounts.find(a => a.isDefault) ?? accounts[0];
-      setAccountId(def.id);
-    }
+    if (accounts.length === 0 || accountId) return;
+    const filter = payment === 'WALLET' ? 'WALLET' : payment === 'CASH' ? 'CASH' : 'BANK';
+    const matching = accounts.filter(a => a.type === filter);
+    const def = matching.find(a => a.isDefault) ?? matching[0] ?? accounts.find(a => a.isDefault) ?? accounts[0];
+    setAccountId(def.id);
   }, [accounts]);
+
+  // Payment method drives which accounts are selectable — "Wallet"/"Cash"
+  // show only that kind, everything else shows only banks.
+  const accountFilter: 'BANK' | 'WALLET' | 'CASH' =
+    payment === 'WALLET' ? 'WALLET' : payment === 'CASH' ? 'CASH' : 'BANK';
+  useEffect(() => {
+    const current = accounts.find(a => a.id === accountId);
+    if (current && current.type !== accountFilter) {
+      const first = accounts.find(a => a.type === accountFilter);
+      if (first) setAccountId(first.id);
+    }
+  }, [accountFilter, accounts]);
   const accountEntity = accounts.find(a => a.id === t.accountId);
   const accountName = accountEntity ? accountLabel(accountEntity) : undefined;
   const toAccountEntity = accounts.find(a => a.id === t.toAccountId);
@@ -207,14 +221,20 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
             {accounts.length > 0 && (
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Account</p>
-                <div className="flex flex-wrap gap-2">
-                  {accounts.map(a => (
-                    <button key={a.id} onClick={() => setAccountId(a.id)}
-                      className={`px-3 py-2 rounded-xl text-sm font-semibold border transition-all ${accountId === a.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
-                      {accountLabel(a)}
-                    </button>
-                  ))}
-                </div>
+                {accounts.filter(a => a.type === accountFilter).length === 0 ? (
+                  <p className="text-xs text-rose-500 font-medium">
+                    No {accountFilter === 'WALLET' ? 'wallets' : accountFilter === 'CASH' ? 'cash accounts' : 'bank accounts'} yet — add one, or pick a different payment method.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {accounts.filter(a => a.type === accountFilter).map(a => (
+                      <button key={a.id} onClick={() => setAccountId(a.id)}
+                        className={`px-3 py-2 rounded-xl text-sm font-semibold border transition-all ${accountId === a.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                        {accountLabel(a)}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

@@ -147,7 +147,7 @@ export const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   CASH: 'Cash',
   CREDIT_CARD: 'Credit Card',
   BANK_TRANSFER: 'Bank',
-  OTHER: 'Other',
+  WALLET: 'Wallet',
 };
 
 export const TYPE_COLOR: Record<TransactionType, string> = {

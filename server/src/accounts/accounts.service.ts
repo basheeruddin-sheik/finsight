@@ -9,6 +9,9 @@ import { CreateAccountDto } from './dto/create-account.dto';
 
 function round(n: number) { return Math.round(n * 100) / 100; }
 
+const ACCOUNT_TYPES = new Set(['BANK', 'WALLET', 'CASH']);
+const normalizeType = (t: string | undefined) => (t && ACCOUNT_TYPES.has(t) ? t : 'BANK');
+
 // Same cash-flow direction as reports.service.ts getNetWorth()'s `cash`
 // formula, applied per-account instead of in aggregate. WRITEOFF and
 // SPLIT_OWE move no cash of the user's, so they're excluded entirely.
@@ -20,6 +23,7 @@ function toRes(doc: any, balance: number) {
   const a = doc.toJSON ? doc.toJSON() : doc;
   return {
     id: a.id ?? a._id?.toString(),
+    type: a.type ?? 'BANK',
     bank: a.bank,
     last4: a.last4 ?? null,
     customName: a.customName ?? null,
@@ -79,15 +83,17 @@ export class AccountsService {
   }
 
   async create(dto: CreateAccountDto) {
-    if (!dto.bank) throw new BadRequestException('Select a bank');
+    const type = normalizeType(dto.type);
+    if (!dto.bank) throw new BadRequestException(type === 'WALLET' ? 'Select a wallet' : type === 'CASH' ? 'Select cash' : 'Select a bank');
     const isFirst = !(await this.model.exists({}));
     if (dto.isDefault || isFirst) {
       await this.model.updateMany({}, { isDefault: false });
     }
     const created = await this.model.create({
+      type,
       bank: dto.bank,
       last4: dto.last4?.trim() || undefined,
-      customName: dto.bank === 'OTHER' ? dto.customName?.trim() || undefined : undefined,
+      customName: (dto.bank === 'OTHER' || type === 'CASH') ? dto.customName?.trim() || undefined : undefined,
       openingBalance: dto.openingBalance ?? 0,
       isDefault: dto.isDefault || isFirst,
     });
@@ -96,6 +102,7 @@ export class AccountsService {
 
   async update(id: string, dto: Partial<CreateAccountDto>) {
     const update: any = {};
+    if (dto.type !== undefined) update.type = normalizeType(dto.type);
     if (dto.bank !== undefined) update.bank = dto.bank;
     if (dto.last4 !== undefined) update.last4 = dto.last4?.trim() || null;
     if (dto.customName !== undefined) update.customName = dto.customName?.trim() || null;

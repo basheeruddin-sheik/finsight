@@ -6,7 +6,7 @@ import {
 import type { Account } from '../types';
 import { formatAmount, todayStr } from '../utils';
 import { Spinner, EmptyState, BottomSheet, ConfirmModal, DateField } from '../components/ui';
-import { BANKS, accountLabel } from '../data/banks';
+import { BANKS, WALLETS, accountLabel } from '../data/banks';
 import { BankBadge } from '../components/BankBadge';
 import { Landmark, Star, ArrowLeftRight, ChevronDown, Archive, RotateCcw } from 'lucide-react';
 
@@ -64,7 +64,7 @@ export default function Accounts() {
       )}
 
       {loading ? <Spinner /> : accounts.length === 0 ? (
-        <EmptyState icon={<Landmark size={32} />} title="No accounts yet" description="Add a bank account or wallet to track its balance"
+        <EmptyState icon={<Landmark size={32} />} title="No accounts yet" description="Add a bank account, wallet, or cash to track its balance"
           action={
             <button onClick={() => setShowAdd(true)}
               className="mt-2 px-5 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-semibold">
@@ -85,30 +85,39 @@ export default function Accounts() {
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            {accounts.map((a, i) => (
-              <div key={a.id}>
-                {i > 0 && <div className="h-px bg-slate-50 mx-4" />}
-                <button onClick={() => setEditing(a)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50">
-                  <BankBadge bank={a.bank} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-semibold text-slate-800 truncate">{accountLabel(a)}</p>
-                      {a.isDefault && (
-                        <span className="flex items-center gap-0.5 text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-100 shrink-0">
-                          <Star size={9} fill="currentColor" strokeWidth={0} /> Default
-                        </span>
-                      )}
-                    </div>
+          {([
+            { label: 'Banks',   list: accounts.filter(a => a.type !== 'WALLET' && a.type !== 'CASH') },
+            { label: 'Wallets', list: accounts.filter(a => a.type === 'WALLET') },
+            { label: 'Cash',    list: accounts.filter(a => a.type === 'CASH') },
+          ] as const).map(({ label, list }) => list.length > 0 && (
+            <div key={label}>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{label} · {list.length}</p>
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                {list.map((a, i) => (
+                  <div key={a.id}>
+                    {i > 0 && <div className="h-px bg-slate-50 mx-4" />}
+                    <button onClick={() => setEditing(a)}
+                      className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50">
+                      <BankBadge bank={a.bank} type={a.type} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-semibold text-slate-800 truncate">{accountLabel(a)}</p>
+                          {a.isDefault && (
+                            <span className="flex items-center gap-0.5 text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-100 shrink-0">
+                              <Star size={9} fill="currentColor" strokeWidth={0} /> Default
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className={`text-base font-bold shrink-0 ${a.balance >= 0 ? 'text-slate-800' : 'text-rose-500'}`}>
+                        {formatAmount(a.balance)}
+                      </p>
+                    </button>
                   </div>
-                  <p className={`text-base font-bold shrink-0 ${a.balance >= 0 ? 'text-slate-800' : 'text-rose-500'}`}>
-                    {formatAmount(a.balance)}
-                  </p>
-                </button>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
 
           {/* Archived */}
           {archived.length > 0 && (
@@ -122,7 +131,7 @@ export default function Accounts() {
                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mt-1">
                   {archived.map((a, i) => (
                     <div key={a.id} className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? 'border-t border-slate-50' : ''}`}>
-                      <BankBadge bank={a.bank} />
+                      <BankBadge bank={a.bank} type={a.type} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-slate-500 truncate">{accountLabel(a)}</p>
                         <p className="text-[10px] text-slate-400 mt-0.5">{formatAmount(a.balance)}</p>
@@ -195,10 +204,11 @@ export default function Accounts() {
 function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
   account: Account | null;
   onClose: () => void;
-  onSaved: (data: { bank: string; last4?: string; customName?: string; openingBalance: number }) => Promise<void>;
+  onSaved: (data: { type: string; bank: string; last4?: string; customName?: string; openingBalance: number }) => Promise<void>;
   onArchive?: () => void;
   onSetDefault?: () => Promise<void>;
 }) {
+  const [type,       setType]       = useState<'BANK' | 'WALLET' | 'CASH'>(account?.type ?? 'BANK');
   const [bank,       setBank]       = useState(account?.bank ?? BANKS[0].key);
   const [last4,      setLast4]      = useState(account?.last4 ?? '');
   const [customName, setCustomName] = useState(account?.customName ?? '');
@@ -206,6 +216,13 @@ function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
   const [saving,     setSaving]     = useState(false);
   const [settingDef, setSettingDef] = useState(false);
   const [error,      setError]      = useState('');
+
+  const institutions = type === 'WALLET' ? WALLETS : type === 'CASH' ? [] : BANKS;
+
+  const changeType = (t: 'BANK' | 'WALLET' | 'CASH') => {
+    setType(t);
+    setBank(t === 'WALLET' ? WALLETS[0].key : t === 'CASH' ? 'CASH' : BANKS[0].key);
+  };
 
   const makeDefault = async () => {
     if (!onSetDefault) return;
@@ -215,19 +232,35 @@ function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
   };
 
   const save = async () => {
-    if (!bank) { setError('Select a bank'); return; }
-    if (last4 && !/^\d{4}$/.test(last4)) { setError('Last 4 digits should be 4 numbers'); return; }
+    if (!bank) { setError(`Select a ${type === 'WALLET' ? 'wallet' : 'bank'}`); return; }
+    if (type === 'BANK' && last4 && !/^\d{4}$/.test(last4)) { setError('Last 4 digits should be 4 numbers'); return; }
     setSaving(true); setError('');
     try {
-      await onSaved({ bank, last4: last4 || undefined, customName: bank === 'OTHER' ? customName.trim() || undefined : undefined, openingBalance: Number(opening) || 0 });
+      await onSaved({
+        type, bank,
+        last4: type === 'BANK' && last4 ? last4 : undefined,
+        customName: (bank === 'OTHER' || type === 'CASH') ? customName.trim() || undefined : undefined,
+        openingBalance: Number(opening) || 0,
+      });
     } catch (e: any) { setError(e.message ?? 'Failed to save'); setSaving(false); }
   };
 
   return (
     <BottomSheet title={account ? 'Edit Account' : 'Add Account'} onClose={onClose}>
-      {/* Icon preview — auto-updates the instant a bank is picked */}
+      {/* Icon preview — auto-updates the instant a bank/wallet is picked */}
       <div className="flex justify-center">
-        <BankBadge bank={bank} size="lg" />
+        <BankBadge bank={bank} type={type} size="lg" />
+      </div>
+
+      <div className="flex bg-slate-100 rounded-2xl p-1 gap-1">
+        {(['BANK', 'WALLET', 'CASH'] as const).map(t => (
+          <button key={t} onClick={() => changeType(t)}
+            className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${
+              type === t ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'
+            }`}>
+            {t === 'BANK' ? 'Bank' : t === 'WALLET' ? 'Wallet' : 'Cash'}
+          </button>
+        ))}
       </div>
 
       {account && (
@@ -243,29 +276,38 @@ function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
         )
       )}
 
-      <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
-        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Bank</p>
-        <select value={bank} onChange={e => setBank(e.target.value)}
-          className="w-full bg-transparent text-[15px] font-semibold text-slate-800 outline-none">
-          {BANKS.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
-        </select>
-      </div>
-
-      {bank === 'OTHER' && (
+      {type !== 'CASH' && (
         <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Name</p>
-          <input type="text" placeholder="e.g. Wallet" value={customName}
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">
+            {type === 'WALLET' ? 'Wallet' : 'Bank'}
+          </p>
+          <select value={bank} onChange={e => setBank(e.target.value)}
+            className="w-full bg-transparent text-[15px] font-semibold text-slate-800 outline-none">
+            {institutions.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
+          </select>
+        </div>
+      )}
+
+      {(bank === 'OTHER' || type === 'CASH') && (
+        <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">
+            {type === 'CASH' ? 'Name (optional)' : 'Name'}
+          </p>
+          <input type="text" placeholder={type === 'CASH' ? 'e.g. Petty Cash' : type === 'WALLET' ? 'e.g. Store credit' : 'e.g. Local bank'} value={customName}
             onChange={e => setCustomName(e.target.value)}
             className="w-full text-[15px] text-slate-800 outline-none bg-transparent placeholder:text-slate-300" />
         </div>
       )}
 
-      <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
-        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Last 4 digits (optional)</p>
-        <input type="text" inputMode="numeric" placeholder="1234" value={last4} maxLength={4}
-          onChange={e => setLast4(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
-          className="w-full text-[15px] font-semibold text-slate-800 outline-none bg-transparent placeholder:text-slate-300" />
-      </div>
+      {/* Wallets don't have an account number — this only applies to banks */}
+      {type === 'BANK' && (
+        <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Last 4 digits (optional)</p>
+          <input type="text" inputMode="numeric" placeholder="1234" value={last4} maxLength={4}
+            onChange={e => setLast4(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+            className="w-full text-[15px] font-semibold text-slate-800 outline-none bg-transparent placeholder:text-slate-300" />
+        </div>
+      )}
 
       <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
         <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">

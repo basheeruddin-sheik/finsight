@@ -28,7 +28,7 @@ export interface AppConfig {
   types: TypeConfig[];
   categories: CategoryConfig[];
 }
-export type PaymentMethod = 'GPAY' | 'PHONEPE' | 'PAYTM' | 'CASH' | 'CREDIT_CARD' | 'BANK_TRANSFER' | 'OTHER';
+export type PaymentMethod = 'GPAY' | 'PHONEPE' | 'PAYTM' | 'CASH' | 'CREDIT_CARD' | 'BANK_TRANSFER' | 'WALLET';
 
 export interface Person {
   id: string;
@@ -40,7 +40,8 @@ export interface Person {
 
 export interface Account {
   id: string;
-  bank: string;               // key into BANKS (frontend/src/data/banks.ts)
+  type: 'BANK' | 'WALLET' | 'CASH';
+  bank: string;               // key into BANKS or WALLETS (frontend/src/data/banks.ts), depending on `type`
   last4: string | null;
   customName: string | null;  // only meaningful when bank === 'OTHER'
   openingBalance: number;

@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
-import { getBank, logoUrl } from '../data/banks';
+import { getInstitution, logoUrl } from '../data/banks';
 
-// Real bank logo, auto-populating the instant a bank is picked. Prefers a
-// bundled local asset (`logo`) when we have one — no network dependency,
-// always crisp. Otherwise falls back to a favicon fetched by domain, and
-// finally to a colored initials badge if that fails too (or for "Other").
-export function BankBadge({ bank, size = 'md' }: { bank: string; size?: 'md' | 'lg' }) {
-  const b = getBank(bank);
+// Real logo (bank or wallet), auto-populating the instant one is picked.
+// Prefers a bundled local asset (`logo`) when we have one — no network
+// dependency, always crisp. Otherwise falls back to a favicon fetched by
+// domain, and finally to a colored initials badge if that fails too (or for
+// "Other"). `type` selects which list `bank` is looked up in — omit for a
+// bank (the default).
+export function BankBadge({ bank, type, size = 'md' }: { bank: string; type?: string; size?: 'md' | 'lg' }) {
+  const b = getInstitution(type, bank);
   const [failed, setFailed] = useState(false);
-  useEffect(() => { setFailed(false); }, [bank]);
+  useEffect(() => { setFailed(false); }, [bank, type]);
 
   const dims = size === 'lg' ? 'w-16 h-16' : 'w-10 h-10';
   const src = b.logo ?? (b.domain ? logoUrl(b.domain) : undefined);

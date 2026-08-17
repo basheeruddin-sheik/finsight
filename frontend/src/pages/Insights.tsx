@@ -714,7 +714,7 @@ export default function Insights() {
                 <div className="flex flex-col gap-3">
                   {accounts.map(a => (
                     <div key={a.id} className="flex items-center gap-3">
-                      <BankBadge bank={a.bank} />
+                      <BankBadge bank={a.bank} type={a.type} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-slate-700 truncate">{accountLabel(a)}</p>
                         {a.isDefault && <p className="text-[10px] text-amber-600 font-semibold mt-0.5">Default</p>}

@@ -35,7 +35,7 @@ function FLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{children}</p>;
 }
 
-const PAYMENTS: PaymentMethod[] = ['PHONEPE', 'GPAY', 'PAYTM', 'CASH', 'CREDIT_CARD', 'BANK_TRANSFER', 'OTHER'];
+const PAYMENTS: PaymentMethod[] = ['PHONEPE', 'GPAY', 'PAYTM', 'CASH', 'CREDIT_CARD', 'BANK_TRANSFER', 'WALLET'];
 const PAGE = 10;
 
 const PERIODS: { v: Period; label: string }[] = [
