@@ -6,28 +6,29 @@ export interface BankOption {
   label: string;
   short: string;     // avatar badge text — fallback when the logo image fails/isn't available
   color: string;      // avatar badge background (Tailwind class) — used with `short`
-  domain?: string;    // bank's official domain, used to fetch its real logo
+  domain?: string;    // bank's official domain, used to fetch its real logo via favicon lookup
+  logo?: string;      // bundled local logo (public/), takes priority over `domain` — no network dependency
 }
 
 export const BANKS: BankOption[] = [
-  { key: 'HDFC',      label: 'HDFC Bank',              short: 'HDFC',   color: 'bg-red-600',    domain: 'hdfcbank.com' },
-  { key: 'ICICI',     label: 'ICICI Bank',              short: 'ICICI',  color: 'bg-orange-600', domain: 'icicibank.com' },
-  { key: 'SBI',       label: 'State Bank of India',     short: 'SBI',    color: 'bg-blue-700',   domain: 'onlinesbi.sbi' },
-  { key: 'AXIS',      label: 'Axis Bank',               short: 'AXIS',   color: 'bg-purple-700', domain: 'axisbank.com' },
-  { key: 'KOTAK',     label: 'Kotak Mahindra Bank',     short: 'KMB',    color: 'bg-red-700',    domain: 'kotak.com' },
-  { key: 'BANDHAN',   label: 'Bandhan Bank',            short: 'BANDHAN', color: 'bg-rose-600' },
-  { key: 'YES',       label: 'Yes Bank',                short: 'YES',    color: 'bg-blue-600',   domain: 'yesbank.in' },
-  { key: 'PNB',       label: 'Punjab National Bank',    short: 'PNB',    color: 'bg-amber-700' },
-  { key: 'BOB',       label: 'Bank of Baroda',          short: 'BOB',    color: 'bg-orange-700', domain: 'bankofbaroda.in' },
+  { key: 'HDFC',      label: 'HDFC Bank',              short: 'HDFC',   color: 'bg-red-600',    logo: '/bank_icons/hdfc.png' },
+  { key: 'ICICI',     label: 'ICICI Bank',              short: 'ICICI',  color: 'bg-orange-600', logo: '/bank_icons/icici.png' },
+  { key: 'SBI',       label: 'State Bank of India',     short: 'SBI',    color: 'bg-blue-700',   logo: '/bank_icons/sbi.png' },
+  { key: 'AXIS',      label: 'Axis Bank',               short: 'AXIS',   color: 'bg-purple-700', logo: '/bank_icons/axis.png' },
+  { key: 'KOTAK',     label: 'Kotak Mahindra Bank',     short: 'KMB',    color: 'bg-red-700',    logo: '/bank_icons/kotak.png' },
+  { key: 'BANDHAN',   label: 'Bandhan Bank',            short: 'BANDHAN', color: 'bg-rose-600',  logo: '/bank_icons/bandhan.png' },
+  { key: 'YES',       label: 'Yes Bank',                short: 'YES',    color: 'bg-blue-600',   logo: '/bank_icons/yes.png' },
+  { key: 'PNB',       label: 'Punjab National Bank',    short: 'PNB',    color: 'bg-amber-700',  logo: '/bank_icons/pnb.png' },
+  { key: 'BOB',       label: 'Bank of Baroda',          short: 'BOB',    color: 'bg-orange-700', logo: '/bank_icons/bob.png' },
   { key: 'CANARA',    label: 'Canara Bank',             short: 'CNRB',   color: 'bg-yellow-700', domain: 'canarabank.com' },
-  { key: 'UNION',     label: 'Union Bank of India',     short: 'UBI',    color: 'bg-blue-800',   domain: 'www.unionbankofindia.co.in' },
+  { key: 'UNION',     label: 'Union Bank of India',     short: 'UBI',    color: 'bg-blue-800',   logo: '/bank_icons/union.png' },
   { key: 'INDUSIND',  label: 'IndusInd Bank',           short: 'INDUS',  color: 'bg-red-800',    domain: 'indusind.com' },
-  { key: 'IDFC',      label: 'IDFC FIRST Bank',         short: 'IDFC',   color: 'bg-teal-700',   domain: 'idfcfirstbank.com' },
-  { key: 'FEDERAL',   label: 'Federal Bank',            short: 'FED',    color: 'bg-blue-900' },
-  { key: 'RBL',       label: 'RBL Bank',                short: 'RBL',    color: 'bg-slate-700',  domain: 'rblbank.com' },
-  { key: 'PAYTM',     label: 'Paytm Payments Bank',     short: 'PAYTM',  color: 'bg-sky-600' },
-  { key: 'INDIAN',    label: 'Indian Bank',             short: 'IB',     color: 'bg-emerald-700' },
-  { key: 'CENTRAL',   label: 'Central Bank of India',   short: 'CBI',    color: 'bg-indigo-700' },
+  { key: 'IDFC',      label: 'IDFC FIRST Bank',         short: 'IDFC',   color: 'bg-teal-700',   logo: '/bank_icons/idfc.png' },
+  { key: 'FEDERAL',   label: 'Federal Bank',            short: 'FED',    color: 'bg-blue-900',   logo: '/bank_icons/federal.png' },
+  { key: 'RBL',       label: 'RBL Bank',                short: 'RBL',    color: 'bg-slate-700',  logo: '/bank_icons/rbl.png' },
+  { key: 'PAYTM',     label: 'Paytm Payments Bank',     short: 'PAYTM',  color: 'bg-sky-600',    logo: '/bank_icons/paytm.png' },
+  { key: 'INDIAN',    label: 'Indian Bank',             short: 'IB',     color: 'bg-emerald-700', logo: '/bank_icons/indian.png' },
+  { key: 'CENTRAL',   label: 'Central Bank of India',   short: 'CBI',    color: 'bg-indigo-700', logo: '/bank_icons/central.png' },
   { key: 'OTHER',     label: 'Other',                   short: '?',      color: 'bg-slate-500' },
 ];
 
