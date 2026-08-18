@@ -235,7 +235,16 @@ function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
   const [bank,       setBank]       = useState(account?.bank ?? BANKS[0].key);
   const [last4,      setLast4]      = useState(account?.last4 ?? '');
   const [customName, setCustomName] = useState(account?.customName ?? '');
-  const [opening,    setOpening]    = useState(account ? String(account.openingBalance) : '');
+  // The field always shows/edits the CURRENT balance (what you'd see in your
+  // bank app right now), never the raw openingBalance — those two drift apart
+  // the moment any transaction touches the account, which was confusing (you'd
+  // type today's balance and see a stale number in the list). `netFromTxns` is
+  // the fixed offset already baked in from transactions logged so far
+  // (balance = openingBalance + netFromTxns); on save we back-solve for the
+  // openingBalance that makes the new number true, instead of asking the user
+  // to do that math themselves.
+  const netFromTxns = account ? account.balance - account.openingBalance : 0;
+  const [balanceInput, setBalanceInput] = useState(account ? String(account.balance) : '');
   const [limit,      setLimit]      = useState(account ? String(account.creditLimit || '') : '');
   const [saving,     setSaving]     = useState(false);
   const [settingDef, setSettingDef] = useState(false);
@@ -266,7 +275,7 @@ function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
         type, bank,
         last4: hasAccountNumber && last4 ? last4 : undefined,
         customName: (bank === 'OTHER' || type === 'CASH' || type === 'CREDIT_CARD') ? customName.trim() || undefined : undefined,
-        openingBalance: Number(opening) || 0,
+        openingBalance: (Number(balanceInput) || 0) - netFromTxns,
         creditLimit: type === 'CREDIT_CARD' ? Number(limit) || 0 : undefined,
       });
     } catch (e: any) { setError(e.message ?? 'Failed to save'); setSaving(false); }
@@ -361,18 +370,18 @@ function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
 
       <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
         <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">
-          {type === 'CREDIT_CARD' ? (account ? 'Outstanding balance' : 'Amount already owed') : (account ? 'Opening balance' : 'Current balance')}
+          {type === 'CREDIT_CARD' ? 'Outstanding balance' : 'Current balance'}
         </p>
         <div className="flex items-center gap-1">
           <span className="text-lg font-bold text-slate-400">₹</span>
-          <input type="text" inputMode="decimal" placeholder="0" value={opening}
-            onChange={e => setOpening(e.target.value.replace(/[^0-9.]/g, ''))}
+          <input type="text" inputMode="decimal" placeholder="0" value={balanceInput}
+            onChange={e => setBalanceInput(e.target.value.replace(/[^0-9.]/g, ''))}
             className="w-full text-xl font-bold text-slate-900 outline-none bg-transparent placeholder:text-slate-300" />
         </div>
         <p className="text-[11px] text-slate-400 mt-1.5">
           {type === 'CREDIT_CARD'
-            ? 'What you currently owe on this card, before any Finsight entries.'
-            : "What's in this account right now, before any Finsight entries."}
+            ? "What you currently owe on this card — right now, matching your card app."
+            : "What's in this account right now — type today's real balance, not a historical one."}
         </p>
       </div>
 
