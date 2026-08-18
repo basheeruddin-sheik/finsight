@@ -40,12 +40,13 @@ export interface Person {
 
 export interface Account {
   id: string;
-  type: 'BANK' | 'WALLET' | 'CASH';
+  type: 'BANK' | 'WALLET' | 'CASH' | 'CREDIT_CARD';
   bank: string;               // key into BANKS or WALLETS (frontend/src/data/banks.ts), depending on `type`
   last4: string | null;
-  customName: string | null;  // only meaningful when bank === 'OTHER'
+  customName: string | null;  // only meaningful when bank === 'OTHER' or type === 'CASH'
   openingBalance: number;
-  balance: number;      // openingBalance + every transaction tagged to this account
+  creditLimit: number;   // CREDIT_CARD only
+  balance: number;        // BANK/WALLET/CASH: money available. CREDIT_CARD: amount currently owed (a liability).
   isDefault: boolean;
   archived?: boolean;
 }

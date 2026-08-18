@@ -74,11 +74,15 @@ export default function AddTransaction() {
     }).catch(() => {});
   }, []);
 
-  // Payment method drives which accounts are selectable — "Wallet"/"Cash"
-  // show only that kind, everything else shows only banks. Keep the current
-  // selection if it still matches; otherwise switch to the first valid one.
-  const accountFilter: 'BANK' | 'WALLET' | 'CASH' =
-    paymentMethod === 'WALLET' ? 'WALLET' : paymentMethod === 'CASH' ? 'CASH' : 'BANK';
+  // Payment method drives which accounts are selectable — "Wallet"/"Cash"/
+  // "Credit Card" show only that kind, everything else shows only banks.
+  // Keep the current selection if it still matches; otherwise switch to
+  // the first valid one.
+  const accountFilter: 'BANK' | 'WALLET' | 'CASH' | 'CREDIT_CARD' =
+    paymentMethod === 'WALLET' ? 'WALLET'
+    : paymentMethod === 'CASH' ? 'CASH'
+    : paymentMethod === 'CREDIT_CARD' ? 'CREDIT_CARD'
+    : 'BANK';
   useEffect(() => {
     const current = accounts.find(a => a.id === accountId);
     if (current && current.type !== accountFilter) {
@@ -238,7 +242,7 @@ export default function AddTransaction() {
               </div>
             ) : accounts.filter(a => a.type === accountFilter).length === 0 ? (
               <div className="bg-rose-50 border border-rose-100 rounded-2xl px-4 py-3">
-                <p className="text-sm text-rose-600 font-medium">No {accountFilter === 'WALLET' ? 'wallets' : accountFilter === 'CASH' ? 'cash accounts' : 'bank accounts'} yet.</p>
+                <p className="text-sm text-rose-600 font-medium">No {accountFilter === 'WALLET' ? 'wallets' : accountFilter === 'CASH' ? 'cash accounts' : accountFilter === 'CREDIT_CARD' ? 'credit cards' : 'bank accounts'} yet.</p>
                 <p className="text-xs text-rose-400 mt-0.5">Go to Settings → Accounts to add one, or pick a different payment method.</p>
               </div>
             ) : (

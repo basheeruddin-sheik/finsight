@@ -55,8 +55,9 @@ export const CASH_OPTION: BankOption = { key: 'CASH', label: 'Cash', short: '₹
 export const getBank   = (key: string) => BANKS.find(b => b.key === key) ?? BANKS[BANKS.length - 1];
 export const getWallet = (key: string) => WALLETS.find(w => w.key === key) ?? WALLETS[WALLETS.length - 1];
 
-// Resolves an institution regardless of whether it's a bank, a wallet, or
-// cash. Defaults to BANK for accounts predating the `type` field.
+// Resolves an institution regardless of whether it's a bank, a wallet, cash,
+// or a credit card (cards are issued by banks, so they share the BANKS
+// list). Defaults to BANK for accounts predating the `type` field.
 export const getInstitution = (type: string | undefined, key: string): BankOption =>
   type === 'WALLET' ? getWallet(key) : type === 'CASH' ? CASH_OPTION : getBank(key);
 
@@ -69,9 +70,16 @@ export const getInstitution = (type: string | undefined, key: string): BankOptio
 export const logoUrl = (domain: string) => `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
 
 // Display label for an account: "HDFC Bank •••• 4821", or just the bank name
-// (or custom name, for "Other"/Cash) when no last-4 was given.
+// (or custom name, for "Other"/Cash) when no last-4 was given. Credit cards
+// get a product name if one was given ("HDFC Bank Regalia") — you can have
+// more than one card from the same bank — or a plain "Credit Card" suffix
+// otherwise, so they don't read identically to a checking account.
 export function accountLabel(a: { type?: string; bank: string; last4?: string | null; customName?: string | null }): string {
   const inst = getInstitution(a.type, a.bank);
-  const base = (a.bank === 'OTHER' || a.type === 'CASH') && a.customName ? a.customName : inst.label;
-  return a.last4 ? `${base} •••• ${a.last4}` : base;
+  const isCustomBank = a.bank === 'OTHER' || a.type === 'CASH';
+  const base = isCustomBank && a.customName ? a.customName : inst.label;
+  const named = a.type === 'CREDIT_CARD'
+    ? (!isCustomBank && a.customName ? `${base} ${a.customName}` : `${base} Credit Card`)
+    : base;
+  return a.last4 ? `${named} •••• ${a.last4}` : named;
 }

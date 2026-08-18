@@ -50,26 +50,38 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
   const [accountId, setAccountId] = useState(t.accountId ?? '');
   const [accounts,  setAccounts]  = useState<Account[]>([]);
 
-  useEffect(() => { getAccounts().then(setAccounts).catch(() => {}); }, []);
+  // Fetch active AND archived accounts — a transaction can reference an
+  // account that's since been archived, and we still need its name to show
+  // "From"/"To" (or "Account") correctly on old transfers/transactions.
+  // Archived ones are filtered back out wherever the user picks a NEW
+  // account (they shouldn't be assignable going forward).
+  useEffect(() => {
+    Promise.all([getAccounts(), getAccounts(true)])
+      .then(([active, arch]) => setAccounts([...active, ...arch]))
+      .catch(() => {});
+  }, []);
   // Legacy transactions (predating accounts) have no accountId — pre-select
   // the default account matching the current payment method's filter,
   // instead of leaving the edit picker blank.
   useEffect(() => {
     if (accounts.length === 0 || accountId) return;
-    const filter = payment === 'WALLET' ? 'WALLET' : payment === 'CASH' ? 'CASH' : 'BANK';
-    const matching = accounts.filter(a => a.type === filter);
-    const def = matching.find(a => a.isDefault) ?? matching[0] ?? accounts.find(a => a.isDefault) ?? accounts[0];
-    setAccountId(def.id);
+    const filter = payment === 'WALLET' ? 'WALLET' : payment === 'CASH' ? 'CASH' : payment === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'BANK';
+    const matching = accounts.filter(a => a.type === filter && !a.archived);
+    const def = matching.find(a => a.isDefault) ?? matching[0] ?? accounts.find(a => a.isDefault && !a.archived) ?? accounts.find(a => !a.archived);
+    if (def) setAccountId(def.id);
   }, [accounts]);
 
-  // Payment method drives which accounts are selectable — "Wallet"/"Cash"
-  // show only that kind, everything else shows only banks.
-  const accountFilter: 'BANK' | 'WALLET' | 'CASH' =
-    payment === 'WALLET' ? 'WALLET' : payment === 'CASH' ? 'CASH' : 'BANK';
+  // Payment method drives which accounts are selectable — "Wallet"/"Cash"/
+  // "Credit Card" show only that kind, everything else shows only banks.
+  const accountFilter: 'BANK' | 'WALLET' | 'CASH' | 'CREDIT_CARD' =
+    payment === 'WALLET' ? 'WALLET'
+    : payment === 'CASH' ? 'CASH'
+    : payment === 'CREDIT_CARD' ? 'CREDIT_CARD'
+    : 'BANK';
   useEffect(() => {
     const current = accounts.find(a => a.id === accountId);
-    if (current && current.type !== accountFilter) {
-      const first = accounts.find(a => a.type === accountFilter);
+    if (current && (current.type !== accountFilter || current.archived)) {
+      const first = accounts.find(a => a.type === accountFilter && !a.archived);
       if (first) setAccountId(first.id);
     }
   }, [accountFilter, accounts]);
@@ -221,13 +233,13 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
             {accounts.length > 0 && (
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Account</p>
-                {accounts.filter(a => a.type === accountFilter).length === 0 ? (
+                {accounts.filter(a => a.type === accountFilter && !a.archived).length === 0 ? (
                   <p className="text-xs text-rose-500 font-medium">
-                    No {accountFilter === 'WALLET' ? 'wallets' : accountFilter === 'CASH' ? 'cash accounts' : 'bank accounts'} yet — add one, or pick a different payment method.
+                    No {accountFilter === 'WALLET' ? 'wallets' : accountFilter === 'CASH' ? 'cash accounts' : accountFilter === 'CREDIT_CARD' ? 'credit cards' : 'bank accounts'} yet — add one, or pick a different payment method.
                   </p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {accounts.filter(a => a.type === accountFilter).map(a => (
+                    {accounts.filter(a => a.type === accountFilter && !a.archived).map(a => (
                       <button key={a.id} onClick={() => setAccountId(a.id)}
                         className={`px-3 py-2 rounded-xl text-sm font-semibold border transition-all ${accountId === a.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
                         {accountLabel(a)}

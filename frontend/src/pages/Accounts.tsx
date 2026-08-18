@@ -10,6 +10,8 @@ import { BANKS, WALLETS, accountLabel } from '../data/banks';
 import { BankBadge } from '../components/BankBadge';
 import { Landmark, Star, ArrowLeftRight, ChevronDown, Archive, RotateCcw } from 'lucide-react';
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 export default function Accounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [archived, setArchived] = useState<Account[]>([]);
@@ -42,7 +44,9 @@ export default function Accounts() {
     catch (e: any) { setError(e.response?.data?.message ?? 'Failed to restore'); }
   };
 
-  const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
+  // Credit card balances are a liability (amount owed), not an asset —
+  // subtract them instead of adding, so the total reflects actual net worth.
+  const totalBalance = accounts.reduce((s, a) => s + (a.type === 'CREDIT_CARD' ? -a.balance : a.balance), 0);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28">
@@ -64,7 +68,7 @@ export default function Accounts() {
       )}
 
       {loading ? <Spinner /> : accounts.length === 0 ? (
-        <EmptyState icon={<Landmark size={32} />} title="No accounts yet" description="Add a bank account, wallet, or cash to track its balance"
+        <EmptyState icon={<Landmark size={32} />} title="No accounts yet" description="Add a bank account, wallet, cash, or credit card to track its balance"
           action={
             <button onClick={() => setShowAdd(true)}
               className="mt-2 px-5 py-2.5 bg-indigo-600 text-white rounded-2xl text-sm font-semibold">
@@ -86,35 +90,54 @@ export default function Accounts() {
           </div>
 
           {([
-            { label: 'Banks',   list: accounts.filter(a => a.type !== 'WALLET' && a.type !== 'CASH') },
-            { label: 'Wallets', list: accounts.filter(a => a.type === 'WALLET') },
-            { label: 'Cash',    list: accounts.filter(a => a.type === 'CASH') },
+            { label: 'Banks',        list: accounts.filter(a => a.type !== 'WALLET' && a.type !== 'CASH' && a.type !== 'CREDIT_CARD') },
+            { label: 'Wallets',      list: accounts.filter(a => a.type === 'WALLET') },
+            { label: 'Cash',         list: accounts.filter(a => a.type === 'CASH') },
+            { label: 'Credit Cards', list: accounts.filter(a => a.type === 'CREDIT_CARD') },
           ] as const).map(({ label, list }) => list.length > 0 && (
             <div key={label}>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{label} · {list.length}</p>
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                {list.map((a, i) => (
-                  <div key={a.id}>
-                    {i > 0 && <div className="h-px bg-slate-50 mx-4" />}
-                    <button onClick={() => setEditing(a)}
-                      className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50">
-                      <BankBadge bank={a.bank} type={a.type} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-semibold text-slate-800 truncate">{accountLabel(a)}</p>
-                          {a.isDefault && (
-                            <span className="flex items-center gap-0.5 text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-100 shrink-0">
-                              <Star size={9} fill="currentColor" strokeWidth={0} /> Default
-                            </span>
+                {list.map((a, i) => {
+                  const isCard = a.type === 'CREDIT_CARD';
+                  const available = isCard ? round2(a.creditLimit - a.balance) : null;
+                  return (
+                    <div key={a.id}>
+                      {i > 0 && <div className="h-px bg-slate-50 mx-4" />}
+                      <button onClick={() => setEditing(a)}
+                        className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50">
+                        <BankBadge bank={a.bank} type={a.type} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-semibold text-slate-800 truncate">{accountLabel(a)}</p>
+                            {a.isDefault && (
+                              <span className="flex items-center gap-0.5 text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-100 shrink-0">
+                                <Star size={9} fill="currentColor" strokeWidth={0} /> Default
+                              </span>
+                            )}
+                          </div>
+                          {isCard && a.creditLimit > 0 && (
+                            <p className="text-[11px] text-slate-400 mt-0.5">{formatAmount(available!)} available of {formatAmount(a.creditLimit)}</p>
                           )}
                         </div>
-                      </div>
-                      <p className={`text-base font-bold shrink-0 ${a.balance >= 0 ? 'text-slate-800' : 'text-rose-500'}`}>
-                        {formatAmount(a.balance)}
-                      </p>
-                    </button>
-                  </div>
-                ))}
+                        <div className="text-right shrink-0">
+                          {isCard ? (
+                            <>
+                              <p className={`text-base font-bold ${a.balance > 0 ? 'text-rose-500' : 'text-slate-800'}`}>
+                                {formatAmount(a.balance)}
+                              </p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">outstanding</p>
+                            </>
+                          ) : (
+                            <p className={`text-base font-bold ${a.balance >= 0 ? 'text-slate-800' : 'text-rose-500'}`}>
+                              {formatAmount(a.balance)}
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -204,22 +227,25 @@ export default function Accounts() {
 function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
   account: Account | null;
   onClose: () => void;
-  onSaved: (data: { type: string; bank: string; last4?: string; customName?: string; openingBalance: number }) => Promise<void>;
+  onSaved: (data: { type: string; bank: string; last4?: string; customName?: string; openingBalance: number; creditLimit?: number }) => Promise<void>;
   onArchive?: () => void;
   onSetDefault?: () => Promise<void>;
 }) {
-  const [type,       setType]       = useState<'BANK' | 'WALLET' | 'CASH'>(account?.type ?? 'BANK');
+  const [type,       setType]       = useState<'BANK' | 'WALLET' | 'CASH' | 'CREDIT_CARD'>(account?.type ?? 'BANK');
   const [bank,       setBank]       = useState(account?.bank ?? BANKS[0].key);
   const [last4,      setLast4]      = useState(account?.last4 ?? '');
   const [customName, setCustomName] = useState(account?.customName ?? '');
   const [opening,    setOpening]    = useState(account ? String(account.openingBalance) : '');
+  const [limit,      setLimit]      = useState(account ? String(account.creditLimit || '') : '');
   const [saving,     setSaving]     = useState(false);
   const [settingDef, setSettingDef] = useState(false);
   const [error,      setError]      = useState('');
 
-  const institutions = type === 'WALLET' ? WALLETS : type === 'CASH' ? [] : BANKS;
+  const usesBankList = type === 'BANK' || type === 'CREDIT_CARD';
+  const institutions = type === 'WALLET' ? WALLETS : usesBankList ? BANKS : [];
+  const hasAccountNumber = type === 'BANK' || type === 'CREDIT_CARD';
 
-  const changeType = (t: 'BANK' | 'WALLET' | 'CASH') => {
+  const changeType = (t: 'BANK' | 'WALLET' | 'CASH' | 'CREDIT_CARD') => {
     setType(t);
     setBank(t === 'WALLET' ? WALLETS[0].key : t === 'CASH' ? 'CASH' : BANKS[0].key);
   };
@@ -232,15 +258,16 @@ function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
   };
 
   const save = async () => {
-    if (!bank) { setError(`Select a ${type === 'WALLET' ? 'wallet' : 'bank'}`); return; }
-    if (type === 'BANK' && last4 && !/^\d{4}$/.test(last4)) { setError('Last 4 digits should be 4 numbers'); return; }
+    if (!bank) { setError(`Select a ${type === 'WALLET' ? 'wallet' : type === 'CREDIT_CARD' ? 'card issuer' : 'bank'}`); return; }
+    if (hasAccountNumber && last4 && !/^\d{4}$/.test(last4)) { setError('Last 4 digits should be 4 numbers'); return; }
     setSaving(true); setError('');
     try {
       await onSaved({
         type, bank,
-        last4: type === 'BANK' && last4 ? last4 : undefined,
-        customName: (bank === 'OTHER' || type === 'CASH') ? customName.trim() || undefined : undefined,
+        last4: hasAccountNumber && last4 ? last4 : undefined,
+        customName: (bank === 'OTHER' || type === 'CASH' || type === 'CREDIT_CARD') ? customName.trim() || undefined : undefined,
         openingBalance: Number(opening) || 0,
+        creditLimit: type === 'CREDIT_CARD' ? Number(limit) || 0 : undefined,
       });
     } catch (e: any) { setError(e.message ?? 'Failed to save'); setSaving(false); }
   };
@@ -253,12 +280,12 @@ function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
       </div>
 
       <div className="flex bg-slate-100 rounded-2xl p-1 gap-1">
-        {(['BANK', 'WALLET', 'CASH'] as const).map(t => (
+        {(['BANK', 'WALLET', 'CASH', 'CREDIT_CARD'] as const).map(t => (
           <button key={t} onClick={() => changeType(t)}
-            className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
               type === t ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'
             }`}>
-            {t === 'BANK' ? 'Bank' : t === 'WALLET' ? 'Wallet' : 'Cash'}
+            {t === 'BANK' ? 'Bank' : t === 'WALLET' ? 'Wallet' : t === 'CASH' ? 'Cash' : 'Card'}
           </button>
         ))}
       </div>
@@ -279,7 +306,7 @@ function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
       {type !== 'CASH' && (
         <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">
-            {type === 'WALLET' ? 'Wallet' : 'Bank'}
+            {type === 'WALLET' ? 'Wallet' : type === 'CREDIT_CARD' ? 'Card Issuer' : 'Bank'}
           </p>
           <select value={bank} onChange={e => setBank(e.target.value)}
             className="w-full bg-transparent text-[15px] font-semibold text-slate-800 outline-none">
@@ -288,19 +315,30 @@ function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
         </div>
       )}
 
-      {(bank === 'OTHER' || type === 'CASH') && (
+      {(bank === 'OTHER' || type === 'CASH' || type === 'CREDIT_CARD') && (
         <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">
-            {type === 'CASH' ? 'Name (optional)' : 'Name'}
+            {type === 'CASH' ? 'Name (optional)' : type === 'CREDIT_CARD' ? 'Card Name (optional)' : 'Name'}
           </p>
-          <input type="text" placeholder={type === 'CASH' ? 'e.g. Petty Cash' : type === 'WALLET' ? 'e.g. Store credit' : 'e.g. Local bank'} value={customName}
+          <input
+            type="text"
+            placeholder={
+              type === 'CASH' ? 'e.g. Petty Cash'
+              : type === 'CREDIT_CARD' ? 'e.g. Regalia, Millennia, Diners Club'
+              : type === 'WALLET' ? 'e.g. Store credit'
+              : 'e.g. Local bank'
+            }
+            value={customName}
             onChange={e => setCustomName(e.target.value)}
             className="w-full text-[15px] text-slate-800 outline-none bg-transparent placeholder:text-slate-300" />
+          {type === 'CREDIT_CARD' && bank !== 'OTHER' && (
+            <p className="text-[11px] text-slate-400 mt-1.5">Handy if you have more than one card from the same bank.</p>
+          )}
         </div>
       )}
 
-      {/* Wallets don't have an account number — this only applies to banks */}
-      {type === 'BANK' && (
+      {/* Wallets and cash don't have an account number */}
+      {hasAccountNumber && (
         <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
           <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Last 4 digits (optional)</p>
           <input type="text" inputMode="numeric" placeholder="1234" value={last4} maxLength={4}
@@ -309,9 +347,21 @@ function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
         </div>
       )}
 
+      {type === 'CREDIT_CARD' && (
+        <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Credit limit (optional)</p>
+          <div className="flex items-center gap-1">
+            <span className="text-lg font-bold text-slate-400">₹</span>
+            <input type="text" inputMode="decimal" placeholder="0" value={limit}
+              onChange={e => setLimit(e.target.value.replace(/[^0-9.]/g, ''))}
+              className="w-full text-xl font-bold text-slate-900 outline-none bg-transparent placeholder:text-slate-300" />
+          </div>
+        </div>
+      )}
+
       <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">
         <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">
-          {account ? 'Opening balance' : 'Current balance'}
+          {type === 'CREDIT_CARD' ? (account ? 'Outstanding balance' : 'Amount already owed') : (account ? 'Opening balance' : 'Current balance')}
         </p>
         <div className="flex items-center gap-1">
           <span className="text-lg font-bold text-slate-400">₹</span>
@@ -319,7 +369,11 @@ function AccountSheet({ account, onClose, onSaved, onArchive, onSetDefault }: {
             onChange={e => setOpening(e.target.value.replace(/[^0-9.]/g, ''))}
             className="w-full text-xl font-bold text-slate-900 outline-none bg-transparent placeholder:text-slate-300" />
         </div>
-        <p className="text-[11px] text-slate-400 mt-1.5">What's in this account right now, before any Finsight entries.</p>
+        <p className="text-[11px] text-slate-400 mt-1.5">
+          {type === 'CREDIT_CARD'
+            ? 'What you currently owe on this card, before any Finsight entries.'
+            : "What's in this account right now, before any Finsight entries."}
+        </p>
       </div>
 
       {error && <p className="text-sm text-rose-500 font-medium">{error}</p>}
@@ -356,14 +410,19 @@ function TransferSheet({ accounts, onClose, onSaved }: {
 
   const amtN = parseFloat(amount) || 0;
   const toOptions = accounts.filter(a => a.id !== fromId);
+  const fromAccount = accounts.find(a => a.id === fromId);
+  const toAccount = accounts.find(a => a.id === toId);
 
   const save = async () => {
     if (!fromId || !toId) { setError('Pick both accounts'); return; }
     if (fromId === toId)  { setError('Pick two different accounts'); return; }
     if (amtN <= 0)         { setError('Enter a valid amount'); return; }
     setSaving(true); setError('');
+    // Leaving the note blank shouldn't mean a generic, unhelpful "Account
+    // transfer" — default to naming the two accounts involved instead.
+    const defaultNote = fromAccount && toAccount ? `Transfer: ${accountLabel(fromAccount)} → ${accountLabel(toAccount)}` : undefined;
     try {
-      await transferBetweenAccounts({ fromAccountId: fromId, toAccountId: toId, amount: amtN, note: note.trim() || undefined, date });
+      await transferBetweenAccounts({ fromAccountId: fromId, toAccountId: toId, amount: amtN, note: note.trim() || defaultNote, date });
       onSaved();
     } catch (e: any) { setError(e.response?.data?.message ?? 'Failed to transfer'); setSaving(false); }
   };
@@ -385,6 +444,9 @@ function TransferSheet({ accounts, onClose, onSaved }: {
           <option value="">Select account…</option>
           {toOptions.map(a => <option key={a.id} value={a.id}>{accountLabel(a)} · {formatAmount(a.balance)}</option>)}
         </select>
+        {toAccount?.type === 'CREDIT_CARD' && (
+          <p className="text-[11px] text-slate-400 mt-1.5">This pays down what's owed on the card, not a purchase.</p>
+        )}
       </div>
 
       <div className="bg-slate-50 rounded-2xl border border-slate-100 px-4 py-3">

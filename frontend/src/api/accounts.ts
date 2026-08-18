@@ -4,10 +4,10 @@ import type { Account } from '../types';
 export const getAccounts = (archived?: boolean) =>
   client.get<Account[]>('/accounts', { params: archived ? { archived: 'true' } : {} }).then(r => r.data);
 
-export const createAccount = (dto: { type?: string; bank: string; last4?: string; customName?: string; openingBalance?: number; isDefault?: boolean }) =>
+export const createAccount = (dto: { type?: string; bank: string; last4?: string; customName?: string; openingBalance?: number; creditLimit?: number; isDefault?: boolean }) =>
   client.post<Account>('/accounts', dto).then(r => r.data);
 
-export const updateAccount = (id: string, dto: { type?: string; bank?: string; last4?: string; customName?: string; openingBalance?: number }) =>
+export const updateAccount = (id: string, dto: { type?: string; bank?: string; last4?: string; customName?: string; openingBalance?: number; creditLimit?: number }) =>
   client.put<Account>(`/accounts/${id}`, dto).then(r => r.data);
 
 export const setDefaultAccount = (id: string) =>

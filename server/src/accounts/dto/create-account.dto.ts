@@ -4,5 +4,6 @@ export class CreateAccountDto {
   last4?: string;
   customName?: string;
   openingBalance?: number;
+  creditLimit?: number;
   isDefault?: boolean;
 }

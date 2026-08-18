@@ -9,13 +9,21 @@ import { CreateAccountDto } from './dto/create-account.dto';
 
 function round(n: number) { return Math.round(n * 100) / 100; }
 
-const ACCOUNT_TYPES = new Set(['BANK', 'WALLET', 'CASH']);
+const ACCOUNT_TYPES = new Set(['BANK', 'WALLET', 'CASH', 'CREDIT_CARD']);
 const normalizeType = (t: string | undefined) => (t && ACCOUNT_TYPES.has(t) ? t : 'BANK');
 
 // Same cash-flow direction as reports.service.ts getNetWorth()'s `cash`
 // formula, applied per-account instead of in aggregate. WRITEOFF and
 // SPLIT_OWE move no cash of the user's, so they're excluded entirely.
 // ACCOUNT_TRANSFER is handled separately (it has two accounts, not one).
+//
+// CREDIT_CARD accounts track a LIABILITY (amount owed), not an asset, so
+// their sign is inverted everywhere below: a purchase (OUTFLOW) *increases*
+// the balance instead of decreasing it, and money arriving (INFLOW, or the
+// receiving side of a bill-payment Transfer) *decreases* what's owed. This
+// doesn't touch net worth — the expense already reduced it the moment it
+// was logged, regardless of payment method; paying the bill later is just
+// moving money between two of the user's own things.
 const INFLOW  = new Set(['INCOME', 'RECEIVE_BACK', 'DIVEST', 'SPLIT_COLLECT']);
 const OUTFLOW = new Set(['EXPENSE', 'TRANSFER', 'LEND', 'INVEST', 'SPLIT_LEND', 'SPLIT_REPAY']);
 
@@ -28,6 +36,7 @@ function toRes(doc: any, balance: number) {
     last4: a.last4 ?? null,
     customName: a.customName ?? null,
     openingBalance: a.openingBalance ?? 0,
+    creditLimit: a.creditLimit ?? 0,
     isDefault: !!a.isDefault,
     archived: !!a.archived,
     balance: round(balance),
@@ -51,7 +60,13 @@ export class AccountsService {
   // every account at once (one pass over the account-tagged transactions).
   private async computeBalances(accounts: AccountDocument[]): Promise<Map<string, number>> {
     const balances = new Map<string, number>();
-    for (const a of accounts) balances.set((a._id as any).toString(), a.openingBalance ?? 0);
+    const typeById = new Map<string, string>();
+    for (const a of accounts) {
+      const id = (a._id as any).toString();
+      balances.set(id, a.openingBalance ?? 0);
+      typeById.set(id, a.type ?? 'BANK');
+    }
+    const isCard = (id: string) => typeById.get(id) === 'CREDIT_CARD';
 
     const [beh, txns] = await Promise.all([
       this.behaviorMap(),
@@ -63,14 +78,17 @@ export class AccountsService {
       if (behavior === 'ACCOUNT_TRANSFER') {
         const from = t.accountId?.toString();
         const to   = t.toAccountId?.toString();
-        if (from && balances.has(from)) balances.set(from, balances.get(from)! - t.amount);
-        if (to   && balances.has(to))   balances.set(to,   balances.get(to)!   + t.amount);
+        // Leaving a normal account debits it; leaving a card is a charge (credits it).
+        if (from && balances.has(from)) balances.set(from, balances.get(from)! + (isCard(from) ? t.amount : -t.amount));
+        // Arriving at a normal account credits it; arriving at a card pays it down.
+        if (to   && balances.has(to))   balances.set(to,   balances.get(to)!   + (isCard(to)   ? -t.amount : t.amount));
         continue;
       }
       const acc = t.accountId?.toString();
       if (!acc || !balances.has(acc)) continue;
-      if (INFLOW.has(behavior!))       balances.set(acc, balances.get(acc)! + t.amount);
-      else if (OUTFLOW.has(behavior!)) balances.set(acc, balances.get(acc)! - t.amount);
+      const card = isCard(acc);
+      if (INFLOW.has(behavior!))       balances.set(acc, balances.get(acc)! + (card ? -t.amount : t.amount));
+      else if (OUTFLOW.has(behavior!)) balances.set(acc, balances.get(acc)! + (card ? t.amount : -t.amount));
     }
     return balances;
   }
@@ -84,7 +102,11 @@ export class AccountsService {
 
   async create(dto: CreateAccountDto) {
     const type = normalizeType(dto.type);
-    if (!dto.bank) throw new BadRequestException(type === 'WALLET' ? 'Select a wallet' : type === 'CASH' ? 'Select cash' : 'Select a bank');
+    if (!dto.bank) {
+      throw new BadRequestException(
+        type === 'WALLET' ? 'Select a wallet' : type === 'CASH' ? 'Select cash' : type === 'CREDIT_CARD' ? 'Select a card issuer' : 'Select a bank',
+      );
+    }
     const isFirst = !(await this.model.exists({}));
     if (dto.isDefault || isFirst) {
       await this.model.updateMany({}, { isDefault: false });
@@ -93,8 +115,9 @@ export class AccountsService {
       type,
       bank: dto.bank,
       last4: dto.last4?.trim() || undefined,
-      customName: (dto.bank === 'OTHER' || type === 'CASH') ? dto.customName?.trim() || undefined : undefined,
+      customName: (dto.bank === 'OTHER' || type === 'CASH' || type === 'CREDIT_CARD') ? dto.customName?.trim() || undefined : undefined,
       openingBalance: dto.openingBalance ?? 0,
+      creditLimit: type === 'CREDIT_CARD' ? (dto.creditLimit ?? 0) : 0,
       isDefault: dto.isDefault || isFirst,
     });
     return toRes(created, created.openingBalance ?? 0);
@@ -107,6 +130,7 @@ export class AccountsService {
     if (dto.last4 !== undefined) update.last4 = dto.last4?.trim() || null;
     if (dto.customName !== undefined) update.customName = dto.customName?.trim() || null;
     if (dto.openingBalance !== undefined) update.openingBalance = dto.openingBalance;
+    if (dto.creditLimit !== undefined) update.creditLimit = dto.creditLimit;
     const doc = await this.model.findByIdAndUpdate(id, update, { returnDocument: 'after' });
     if (!doc) throw new NotFoundException('Account not found');
     const balances = await this.computeBalances([doc]);
@@ -167,7 +191,11 @@ export class AccountsService {
       amount: round(body.amount),
       date: body.date ? moment.utc(body.date, 'YYYY-MM-DD').valueOf() : moment.utc().startOf('day').valueOf(),
       paymentMethod: '—',
-      note: body.note ?? 'Account transfer',
+      // Backstop only — the frontend already sends a descriptive note built
+      // from the full display labels. This uses the raw bank/wallet keys
+      // since that's all the backend has, still better than a bare
+      // "Account transfer" if a note is ever omitted.
+      note: body.note ?? `Transfer: ${from.bank} → ${to.bank}`,
       accountId: from._id,
       toAccountId: to._id,
     });

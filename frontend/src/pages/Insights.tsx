@@ -712,22 +712,28 @@ export default function Insights() {
                   </button>
                 </div>
                 <div className="flex flex-col gap-3">
-                  {accounts.map(a => (
-                    <div key={a.id} className="flex items-center gap-3">
-                      <BankBadge bank={a.bank} type={a.type} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-slate-700 truncate">{accountLabel(a)}</p>
-                        {a.isDefault && <p className="text-[10px] text-amber-600 font-semibold mt-0.5">Default</p>}
+                  {accounts.map(a => {
+                    const isCard = a.type === 'CREDIT_CARD';
+                    return (
+                      <div key={a.id} className="flex items-center gap-3">
+                        <BankBadge bank={a.bank} type={a.type} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-700 truncate">{accountLabel(a)}</p>
+                          {a.isDefault && <p className="text-[10px] text-amber-600 font-semibold mt-0.5">Default</p>}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className={`text-sm font-bold ${isCard ? (a.balance > 0 ? 'text-rose-500' : 'text-slate-800') : (a.balance < 0 ? 'text-rose-500' : 'text-slate-800')}`}>
+                            {formatAmount(a.balance)}
+                          </span>
+                          {isCard && <p className="text-[10px] text-slate-400">outstanding</p>}
+                        </div>
                       </div>
-                      <span className={`text-sm font-bold shrink-0 ${a.balance < 0 ? 'text-rose-500' : 'text-slate-800'}`}>
-                        {formatAmount(a.balance)}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <div className="border-t border-slate-100 pt-2.5 flex items-center justify-between">
                     <span className="text-sm font-bold text-slate-700">Total across accounts</span>
                     <span className="text-sm font-bold text-slate-900">
-                      {formatAmount(accounts.reduce((s, a) => s + a.balance, 0))}
+                      {formatAmount(accounts.reduce((s, a) => s + (a.type === 'CREDIT_CARD' ? -a.balance : a.balance), 0))}
                     </span>
                   </div>
                 </div>
