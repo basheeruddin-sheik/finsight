@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { getSummary, getTransactions } from '../api/transactions';
 import { getPersons } from '../api/persons';
-import type { Transaction, TransactionSummary, Person } from '../types';
+import { getAccounts } from '../api/accounts';
+import type { Transaction, TransactionSummary, Person, Account } from '../types';
 import { formatAmount, formatTime, currentMonth, monthRange, dayBeforeCurrentMonth, groupByDay, collapseSplitGroups } from '../utils';
 import { useConfig } from '../context/ConfigContext';
 import { Spinner, EmptyState, IconCircle, BottomSheet } from '../components/ui';
@@ -28,6 +29,7 @@ export default function Home() {
   const [summary, setSummary]   = useState<TransactionSummary | null>(null);
 const [recent, setRecent]     = useState<Transaction[]>([]);
   const [persons, setPersons]   = useState<Person[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [detail, setDetail]     = useState<Transaction | null>(null);
   const [splitGroupId, setSplitGroupId] = useState<string | null>(null);
   const [loading, setLoading]   = useState(true);
@@ -42,9 +44,10 @@ const [recent, setRecent]     = useState<Transaction[]>([]);
       getTransactions(monthRange(0)),
       getPersons(),
       getTransactions({ to: dayBeforeCurrentMonth() }),
+      getAccounts(),
     ])
-      .then(([s, txns, p, prior]) => {
-        setSummary(s); setRecent(txns); setPersons(p); setLoadError(false);
+      .then(([s, txns, p, prior, accs]) => {
+        setSummary(s); setRecent(txns); setPersons(p); setAccounts(accs); setLoadError(false);
         setHasHistory(prior.length > 0);
         // Self-heal: browser storage can get evicted (e.g. iOS PWA storage cap),
         // wrongly making a returning user look "new". If they clearly have prior
@@ -83,6 +86,10 @@ const [recent, setRecent]     = useState<Transaction[]>([]);
   const splitLent      = summary?.splitLent ?? 0;
   const splitCollected = summary?.splitCollected ?? 0;
   const splitRepaid    = summary?.splitRepaid ?? 0;
+  // Total owed across all credit cards right now — a running balance, not a
+  // slice of this month's income, so it's shown alongside the allocation
+  // grid rather than as one of the bar's colored segments.
+  const cardOutstanding = accounts.filter(a => a.type === 'CREDIT_CARD' && !a.archived).reduce((s, a) => s + a.balance, 0);
 
   if (loading) return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -130,7 +137,8 @@ const [recent, setRecent]     = useState<Transaction[]>([]);
           {/* Income allocation: Expenses + Family + Lent (net) + Split (net) + Invested + Saved */}
           <AllocationBar income={income} expenses={spent} family={family} lent={lent} recovered={recovered}
             splitLent={splitLent} splitCollected={splitCollected} splitRepaid={splitRepaid}
-            invested={invested} returns={returns} costBasisReturned={costBasisReturn} savings={saved} />
+            invested={invested} returns={returns} costBasisReturned={costBasisReturn} savings={saved}
+            cardOutstanding={cardOutstanding} />
         </div>
       </div>
 
@@ -316,10 +324,11 @@ function AppBar({ month }: { month: string }) {
 // Expenses, Family, net Lending, net Splits, net Investing, and what was
 // Saved. Lending, splits, and investing are shown net of money that came
 // back, so the segments sum to income.
-function AllocationBar({ income, expenses, family, lent, recovered, splitLent, splitCollected, splitRepaid, invested, returns, costBasisReturned, savings }: {
+function AllocationBar({ income, expenses, family, lent, recovered, splitLent, splitCollected, splitRepaid, invested, returns, costBasisReturned, savings, cardOutstanding }: {
   income: number; expenses: number; family: number; lent: number; recovered: number;
   splitLent: number; splitCollected: number; splitRepaid: number;
   invested: number; returns: number; costBasisReturned: number; savings: number;
+  cardOutstanding: number;
 }) {
   const netLent = Math.max(lent - recovered, 0);
   const lentNote = lent > 0 && recovered > 0
@@ -379,23 +388,26 @@ function AllocationBar({ income, expenses, family, lent, recovered, splitLent, s
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
+      <div className="grid grid-cols-3 gap-x-3 gap-y-3 mt-3">
         {segs.filter(s => s.label !== 'Saved').map(s => (
           <LegendItem key={s.label} dot={s.color} label={s.label} value={s.amount} pct={Math.round((s.amount / base) * 100)} />
         ))}
+        {cardOutstanding > 0 && (
+          <LegendItem dot="bg-rose-500" label="Card Due" value={cardOutstanding} />
+        )}
       </div>
     </div>
   );
 }
 
-function LegendItem({ dot, label, value, pct }: { dot: string; label: string; value: number; pct: number }) {
+function LegendItem({ dot, label, value, pct }: { dot: string; label: string; value: number; pct?: number }) {
   return (
     <div className="flex items-center gap-1.5 min-w-0">
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
       <div className="min-w-0">
         <div className="flex items-baseline gap-1">
           <span className="text-[11px] text-slate-400 truncate">{label}</span>
-          <span className="text-[9px] font-semibold text-slate-500">{pct}%</span>
+          {pct !== undefined && <span className="text-[9px] font-semibold text-slate-500">{pct}%</span>}
         </div>
         <span className="text-xs font-bold text-white">{formatAmount(value)}</span>
       </div>

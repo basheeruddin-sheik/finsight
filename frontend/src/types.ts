@@ -93,6 +93,7 @@ export interface MonthlyBreakdown {
   paymentMethods: { method: string; total: number }[];
   topCategories: { category: string; total: number }[];
   investments: { category: string; total: number }[]; // net cash deployed per asset (INVEST − DIVEST)
+  accountSpend: { accountId: string; total: number }[]; // expenses per account — used for credit-card spend
 }
 
 export interface CategoryTrend {

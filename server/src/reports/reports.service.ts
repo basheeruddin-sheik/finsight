@@ -41,12 +41,17 @@ export class ReportsService {
     const byCategory: Record<string, number> = {};   // expenses
     const byPayment:  Record<string, number> = {};   // expense payment methods
     const byInvest:   Record<string, number> = {};   // net cash deployed per asset (INVEST − DIVEST)
+    const byAccount:  Record<string, number> = {};   // expenses per account (used for credit-card spend)
     for (const t of txns) {
       const beh = behaviorMap.get(t.type) ?? 'EXPENSE';
       if (beh === 'EXPENSE') {
         const cat = t.category ?? 'OTHER';
         byCategory[cat] = (byCategory[cat] ?? 0) + t.amount;
         byPayment[t.paymentMethod] = (byPayment[t.paymentMethod] ?? 0) + t.amount;
+        if (t.accountId) {
+          const acc = t.accountId.toString();
+          byAccount[acc] = (byAccount[acc] ?? 0) + t.amount;
+        }
       } else if (beh === 'INVEST') {
         const cat = t.category ?? 'OTHER';
         byInvest[cat] = (byInvest[cat] ?? 0) + t.amount;
@@ -65,8 +70,11 @@ export class ReportsService {
     const investments = Object.entries(byInvest)
       .map(([category, total]) => ({ category, total: round(total) }))
       .sort((a, b) => b.total - a.total);
+    const accountSpend = Object.entries(byAccount)
+      .map(([accountId, total]) => ({ accountId, total: round(total) }))
+      .sort((a, b) => b.total - a.total);
 
-    return { categories, paymentMethods, topCategories: categories.slice(0, 3), investments };
+    return { categories, paymentMethods, topCategories: categories.slice(0, 3), investments, accountSpend };
   }
 
   async getCategoryTrend(category: string) {

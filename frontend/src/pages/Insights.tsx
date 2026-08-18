@@ -83,15 +83,18 @@ function mergeBreakdowns(list: MonthlyBreakdown[]): MonthlyBreakdown {
   const cats: Record<string, number> = {};
   const pays: Record<string, number> = {};
   const invs: Record<string, number> = {};
+  const accs: Record<string, number> = {};
   for (const bd of list) {
     for (const c of bd.categories)      cats[c.category] = (cats[c.category] ?? 0) + c.total;
     for (const p of bd.paymentMethods)  pays[p.method]   = (pays[p.method]   ?? 0) + p.total;
     for (const i of bd.investments ?? []) invs[i.category] = (invs[i.category] ?? 0) + i.total;
+    for (const a of bd.accountSpend ?? []) accs[a.accountId] = (accs[a.accountId] ?? 0) + a.total;
   }
   const categories     = Object.entries(cats).map(([category, total]) => ({ category, total })).sort((a, b) => b.total - a.total);
   const paymentMethods = Object.entries(pays).map(([method,   total]) => ({ method,   total })).sort((a, b) => b.total - a.total);
   const investments    = Object.entries(invs).map(([category, total]) => ({ category, total })).sort((a, b) => b.total - a.total);
-  return { categories, paymentMethods, topCategories: categories.slice(0, 3), investments };
+  const accountSpend   = Object.entries(accs).map(([accountId, total]) => ({ accountId, total })).sort((a, b) => b.total - a.total);
+  return { categories, paymentMethods, topCategories: categories.slice(0, 3), investments, accountSpend };
 }
 
 // ── Custom tooltip ────────────────────────────────────────────────────────────
@@ -591,6 +594,42 @@ export default function Insights() {
                   </>
                 )}
               </Card>
+
+              {/* Credit card spending — limit vs. how much was charged to each card this period */}
+              {(() => {
+                const cardSpend = (breakdown?.accountSpend ?? [])
+                  .map(s => ({ ...s, account: accounts.find(a => a.id === s.accountId) }))
+                  .filter(s => s.account?.type === 'CREDIT_CARD');
+                if (cardSpend.length === 0) return null;
+                const totalCardSpend = cardSpend.reduce((s, c) => s + c.total, 0);
+                return (
+                  <Card title={`Credit Card Spending · ${title}`}>
+                    <div className="flex flex-col gap-3">
+                      {cardSpend.map(c => {
+                        const limit = c.account?.creditLimit ?? 0;
+                        return (
+                          <div key={c.accountId} className="flex items-center gap-3">
+                            {c.account && <BankBadge bank={c.account.bank} type={c.account.type} />}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-slate-700 truncate">
+                                {c.account ? accountLabel(c.account) : 'Unknown card'}
+                              </p>
+                              <p className="text-[11px] text-slate-400 mt-0.5">
+                                {limit > 0 ? `Limit ${formatAmount(limit)}` : 'No limit set'}
+                              </p>
+                            </div>
+                            <span className="text-sm font-bold text-slate-800 shrink-0">{formatAmount(c.total)}</span>
+                          </div>
+                        );
+                      })}
+                      <div className="border-t border-slate-100 pt-2.5 flex items-center justify-between">
+                        <span className="text-sm font-bold text-slate-700">Total charged to cards</span>
+                        <span className="text-sm font-bold text-slate-900">{formatAmount(totalCardSpend)}</span>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })()}
             </>
           )
         )}
@@ -701,44 +740,135 @@ export default function Insights() {
               )}
             </Card>
 
-            {/* ── Account balances ── */}
-            {accounts.length > 0 && (
-              <Card>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Accounts</p>
-                  <button onClick={() => navigate('/accounts')}
-                    className="flex items-center gap-0.5 text-[11px] font-semibold text-indigo-600 active:opacity-70">
-                    Manage <ChevronRight size={12} strokeWidth={2.5} />
-                  </button>
-                </div>
-                <div className="flex flex-col gap-3">
-                  {accounts.map(a => {
-                    const isCard = a.type === 'CREDIT_CARD';
-                    return (
-                      <div key={a.id} className="flex items-center gap-3">
-                        <BankBadge bank={a.bank} type={a.type} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-slate-700 truncate">{accountLabel(a)}</p>
-                          {a.isDefault && <p className="text-[10px] text-amber-600 font-semibold mt-0.5">Default</p>}
-                        </div>
-                        <div className="text-right shrink-0">
-                          <span className={`text-sm font-bold ${isCard ? (a.balance > 0 ? 'text-rose-500' : 'text-slate-800') : (a.balance < 0 ? 'text-rose-500' : 'text-slate-800')}`}>
-                            {formatAmount(a.balance)}
-                          </span>
-                          {isCard && <p className="text-[10px] text-slate-400">outstanding</p>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div className="border-t border-slate-100 pt-2.5 flex items-center justify-between">
-                    <span className="text-sm font-bold text-slate-700">Total across accounts</span>
-                    <span className="text-sm font-bold text-slate-900">
-                      {formatAmount(accounts.reduce((s, a) => s + (a.type === 'CREDIT_CARD' ? -a.balance : a.balance), 0))}
-                    </span>
+            {/* ── Account balances, grouped by kind ── */}
+            {accounts.length > 0 && (() => {
+              const groups = [
+                { label: 'Banks',        list: accounts.filter(a => a.type !== 'WALLET' && a.type !== 'CASH' && a.type !== 'CREDIT_CARD') },
+                { label: 'Wallets',      list: accounts.filter(a => a.type === 'WALLET') },
+                { label: 'Cash',         list: accounts.filter(a => a.type === 'CASH') },
+                { label: 'Credit Cards', list: accounts.filter(a => a.type === 'CREDIT_CARD') },
+              ].filter(g => g.list.length > 0);
+              const totalAcrossAccounts = accounts.reduce((s, a) => s + (a.type === 'CREDIT_CARD' ? -a.balance : a.balance), 0);
+
+              return (
+                <Card>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Accounts</p>
+                    <button onClick={() => navigate('/accounts')}
+                      className="flex items-center gap-0.5 text-[11px] font-semibold text-indigo-600 active:opacity-70">
+                      Manage <ChevronRight size={12} strokeWidth={2.5} />
+                    </button>
                   </div>
-                </div>
-              </Card>
-            )}
+                  <div className="flex flex-col gap-4">
+                    {groups.map(g => {
+                      const isCardGroup = g.label === 'Credit Cards';
+                      const subtotal = g.list.reduce((s, a) => s + a.balance, 0);
+                      return (
+                        <div key={g.label}>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{g.label}</p>
+                            <p className={`text-xs font-bold ${isCardGroup && subtotal > 0 ? 'text-rose-500' : 'text-slate-500'}`}>
+                              {formatAmount(subtotal)}{isCardGroup ? ' owed' : ''}
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-2.5">
+                            {g.list.map(a => {
+                              const isCard = a.type === 'CREDIT_CARD';
+                              return (
+                                <div key={a.id} className="flex items-center gap-3">
+                                  <BankBadge bank={a.bank} type={a.type} />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold text-slate-700 truncate">{accountLabel(a)}</p>
+                                    {a.isDefault && <p className="text-[10px] text-amber-600 font-semibold mt-0.5">Default</p>}
+                                  </div>
+                                  <div className="text-right shrink-0">
+                                    <span className={`text-sm font-bold ${isCard ? (a.balance > 0 ? 'text-rose-500' : 'text-slate-800') : (a.balance < 0 ? 'text-rose-500' : 'text-slate-800')}`}>
+                                      {formatAmount(a.balance)}
+                                    </span>
+                                    {isCard && <p className="text-[10px] text-slate-400">outstanding</p>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="border-t border-slate-100 pt-2.5 flex items-center justify-between">
+                      <span className="text-sm font-bold text-slate-700">Total across accounts</span>
+                      <span className="text-sm font-bold text-slate-900">{formatAmount(totalAcrossAccounts)}</span>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })()}
+
+            {/* ── Credit card utilization ── */}
+            {(() => {
+              const cards = accounts.filter(a => a.type === 'CREDIT_CARD');
+              if (cards.length === 0) return null;
+              const totalLimit       = cards.reduce((s, a) => s + (a.creditLimit || 0), 0);
+              const totalOutstanding = cards.reduce((s, a) => s + a.balance, 0);
+              const totalAvailable   = Math.max(totalLimit - totalOutstanding, 0);
+              const utilPct = totalLimit > 0 ? Math.round((totalOutstanding / totalLimit) * 100) : null;
+              const barColor = (u: number) => u >= 70 ? '#f43f5e' : u >= 30 ? '#f59e0b' : '#10b981';
+
+              return (
+                <Card title="Credit Card Utilization">
+                  {totalLimit > 0 ? (
+                    <>
+                      <div className="flex items-end justify-between mb-2">
+                        <div>
+                          <p className="text-2xl font-bold text-slate-900">{formatAmount(totalOutstanding)}</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">owed of {formatAmount(totalLimit)} total limit</p>
+                        </div>
+                        <p className={`text-xl font-bold ${utilPct! >= 70 ? 'text-rose-500' : utilPct! >= 30 ? 'text-amber-500' : 'text-emerald-600'}`}>
+                          {utilPct}%
+                        </p>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden mb-1">
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(utilPct!, 100)}%`, background: barColor(utilPct!) }} />
+                      </div>
+                      <p className="text-[11px] text-slate-400 mb-3">{formatAmount(totalAvailable)} available</p>
+                      {utilPct! >= 70 && (
+                        <p className="text-[10px] text-rose-600 bg-rose-50 rounded-lg px-3 py-1.5 mb-3">
+                          High utilization can affect your credit score — consider paying down what you can.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-slate-500 mb-3">
+                      {formatAmount(totalOutstanding)} owed across {cards.length} card{cards.length > 1 ? 's' : ''} — add a credit limit on each card to see utilization.
+                    </p>
+                  )}
+                  {cards.length > 1 && (
+                    <div className="flex flex-col gap-2.5 border-t border-slate-100 pt-3">
+                      {cards.map(c => {
+                        const pct = c.creditLimit > 0 ? Math.round((c.balance / c.creditLimit) * 100) : null;
+                        return (
+                          <div key={c.id} className="flex items-center gap-3">
+                            <BankBadge bank={c.bank} type={c.type} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-slate-700 truncate">{accountLabel(c)}</p>
+                              {pct !== null ? (
+                                <div className="h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
+                                  <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: barColor(pct) }} />
+                                </div>
+                              ) : (
+                                <p className="text-[10px] text-slate-400 mt-0.5">no limit set</p>
+                              )}
+                            </div>
+                            <span className={`text-xs font-bold shrink-0 ${c.balance > 0 ? 'text-rose-500' : 'text-slate-500'}`}>
+                              {formatAmount(c.balance)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Card>
+              );
+            })()}
 
             {/* ── Realized gains (only once something has been sold) ── */}
             {netWorth.salesProceeds > 0 && (() => {
