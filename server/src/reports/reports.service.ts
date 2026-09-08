@@ -101,9 +101,12 @@ export class ReportsService {
       const txns = await this.txnModel.find({ date: { $gte: from, $lt: to } });
 
       const totals: Record<string, number> = {};
+      let splitCollectCash = 0, splitRepayCash = 0;
       for (const t of txns) {
         const beh = behaviorMap.get(t.type) ?? 'EXPENSE';
         totals[beh] = (totals[beh] ?? 0) + t.amount;
+        if (beh === 'SPLIT_COLLECT' && t.accountId) splitCollectCash += t.amount;
+        if (beh === 'SPLIT_REPAY'   && t.accountId) splitRepayCash   += t.amount;
       }
 
       const income      = totals['INCOME']       ?? 0;
@@ -113,11 +116,10 @@ export class ReportsService {
       const received    = totals['RECEIVE_BACK'] ?? 0;
       const invested    = totals['INVEST']       ?? 0;
       // Same cash-flow treatment as transactions.service.ts getSummary(), so
-      // this trend agrees with the Home page for the same month.
+      // this trend agrees with the Home page for the same month. No-cash split
+      // settles clear balances but move no money, so they're excluded here.
       const splitLent    = totals['SPLIT_LEND']    ?? 0;
-      const splitCollect = totals['SPLIT_COLLECT'] ?? 0;
-      const splitRepay   = totals['SPLIT_REPAY']   ?? 0;
-      const realSavings = income - expenses - transfers + received - lent - splitLent + splitCollect - splitRepay;
+      const realSavings = income - expenses - transfers + received - lent - splitLent + splitCollectCash - splitRepayCash;
       const savingsRate = income > 0 ? Math.round((realSavings / income) * 100) : 0;
 
       result.push({ month: label, income: round(income), expenses: round(expenses), familyTransfers: round(transfers), realSavings: round(realSavings), savingsRate, investments: round(invested) });
@@ -165,12 +167,18 @@ export class ReportsService {
     let openingInvest = 0;   // opening-dated INVEST — establishes assets, not a cash purchase
     let openingLent = 0;     // opening-dated LEND   — establishes receivable, not a cash outflow
     let openingSplitLent = 0; // opening-dated SPLIT_LEND — pre-existing split receivable
+    // Split settles only move cash when tied to an account; a no-cash settle
+    // (write-off / forgiven) clears the balance but must not touch cash.
+    let splitCollectCash = 0, splitRepayCash = 0;
     const investByCat: Record<string, { invested: number; returned: number }> = {};
 
     for (const t of txns) {
       const beh = behaviorMap.get(t.type) ?? 'EXPENSE';
       acc[beh] = (acc[beh] ?? 0) + t.amount;
       const isOpening = t.date === OPENING_EPOCH;
+
+      if (beh === 'SPLIT_COLLECT' && t.accountId) splitCollectCash += t.amount;
+      if (beh === 'SPLIT_REPAY'   && t.accountId) splitRepayCash   += t.amount;
 
       if (beh === 'INVEST') {
         const cat = t.category ?? 'OTHER';
@@ -194,16 +202,15 @@ export class ReportsService {
     const invested = acc['INVEST']       ?? 0;
     const divested = acc['DIVEST']       ?? 0;
     // Split cash flows: you fronting a friend's share (−), collecting it back (+),
-    // and paying a friend back (−). SPLIT_OWE accrues a debt without moving cash.
+    // and paying a friend back (−). SPLIT_OWE accrues a debt without moving cash;
+    // no-cash settles likewise clear a balance without touching cash.
     const splitLent    = acc['SPLIT_LEND']    ?? 0;
-    const splitCollect = acc['SPLIT_COLLECT'] ?? 0;
-    const splitRepay   = acc['SPLIT_REPAY']   ?? 0;
 
     // Cash = liquid residual. Opening invest/loans are added back because they
     // were never spent from tracked cash — they were pre-existing holdings.
     const cash = income - expenses - transfer - lent + received - invested + divested
       + openingInvest + openingLent
-      - splitLent + splitCollect - splitRepay
+      - splitLent + splitCollectCash - splitRepayCash
       + openingSplitLent;
 
     // Investments per vertical, net of redemptions (a fully-sold FD nets to 0).

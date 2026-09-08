@@ -116,10 +116,15 @@ export class TransactionsService {
     // Accumulate by behavior
     const totals: Record<string, number> = {};
     let costBasisReturned = 0;
+    // Split settles only move cash when tied to an account — a no-cash settle
+    // (write-off / forgiven) clears the balance but must not count as cash.
+    let splitCollectCash = 0, splitRepayCash = 0;
     for (const t of txns) {
       const beh = behaviorMap.get(t.type) ?? 'EXPENSE';
       totals[beh] = (totals[beh] ?? 0) + t.amount;
       if (beh === 'DIVEST') costBasisReturned += t.costBasis ?? 0;
+      if (beh === 'SPLIT_COLLECT' && t.accountId) splitCollectCash += t.amount;
+      if (beh === 'SPLIT_REPAY'   && t.accountId) splitRepayCash   += t.amount;
     }
 
     const income      = totals['INCOME']       ?? 0;
@@ -139,8 +144,9 @@ export class TransactionsService {
     const splitCollect = totals['SPLIT_COLLECT'] ?? 0;
     const splitRepay   = totals['SPLIT_REPAY']   ?? 0;
 
+    // Cash-flow (savings) uses only settles that actually moved money.
     const realSavings = income - expenses - transfers + received - lent - invested + divested
-      - splitLent + splitCollect - splitRepay;
+      - splitLent + splitCollectCash - splitRepayCash;
     const savingsRate = income > 0 ? Math.round((realSavings / income) * 100) : 0;
 
     return {

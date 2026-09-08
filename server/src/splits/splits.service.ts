@@ -157,19 +157,24 @@ export class SplitsService {
     return { created: createdCount };
   }
 
-  // Settle a friend — posts the matching cash transaction toward the balance.
+  // Settle a friend — posts the matching transaction toward the balance.
   // Pass `amount` for a partial settlement; omit it to clear the full balance.
+  // With an `accountId` it's a real cash settle (money in/out of that account);
+  // without one it's a no-cash settle (write-off / forgiven / settled outside
+  // the app) — it clears the balance but moves no money, so it's excluded from
+  // cash and savings, mirroring a borrow write-off.
   async settle(personId: string, amount?: number, accountId?: string, date?: string) {
     const { balance } = await this.findByPerson(personId);
     const max = Math.abs(balance);
     if (max < 0.01) return this.findByPerson(personId);
-    if (!accountId) throw new BadRequestException('Select an account');
     const amt = round(amount && amount > 0 ? Math.min(amount, max) : max);
     const typeFor = await this.typeForBehavior();
     // balance > 0: they owe you → you collect (SPLIT_COLLECT)
     // balance < 0: you owe them → you repay  (SPLIT_REPAY)
     const typeKey = balance > 0 ? typeFor.get('SPLIT_COLLECT') : typeFor.get('SPLIT_REPAY');
     if (!typeKey) throw new Error('Split types are not configured');
+    const noCash = !accountId;
+    const partial = amt < max;
     await this.txnModel.create({
       type: typeKey,
       amount: amt,
@@ -179,10 +184,13 @@ export class SplitsService {
       // creation order, which is what caused settle-ups to always cluster above
       // same-day activity in the Home/Splits feed no matter when they happened.
       date: date ? moment.utc(date, 'YYYY-MM-DD').valueOf() : moment.utc().startOf('day').valueOf(),
-      paymentMethod: 'CASH',
+      paymentMethod: noCash ? '—' : 'CASH',
       personId: new Types.ObjectId(personId),
-      note: amt < max ? 'Partial settle' : 'Settled up',
-      accountId: new Types.ObjectId(accountId),
+      note: noCash
+        ? (partial ? 'Partial settle (no money)' : 'Settled up (no money)')
+        : (partial ? 'Partial settle' : 'Settled up'),
+      // No accountId → no cash moved; balance still clears via the split math.
+      accountId: accountId ? new Types.ObjectId(accountId) : undefined,
     });
     return this.findByPerson(personId);
   }

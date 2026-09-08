@@ -631,6 +631,7 @@ function DetailSheet({ personId, name, accounts, onClose, onChanged }: {
   }, [accounts]);
   const [settleDate, setSettleDate] = useState(todayStr());
   const [settleErr, setSettleErr] = useState('');
+  const [settleMode, setSettleMode] = useState<'cash' | 'free'>('cash');  // 'free' = no money moved
   const [busy, setBusy] = useState(false);
 
   const load = () => getSplitDetail(personId).then(setDetail);
@@ -640,16 +641,17 @@ function DetailSheet({ personId, name, accounts, onClose, onChanged }: {
   const owes = balance >= 0;
   const max = Math.abs(balance);
 
-  const openSettle = () => { setSettleAmt(String(max)); setSettleDate(todayStr()); setSettleErr(''); setSettleOpen(true); };
+  const openSettle = () => { setSettleAmt(String(max)); setSettleDate(todayStr()); setSettleErr(''); setSettleMode('cash'); setSettleOpen(true); };
   const doSettle = async () => {
     const amt = parseFloat(settleAmt);
-    if (isNaN(amt) || amt <= 0)  { setSettleErr('Enter an amount'); return; }
-    if (amt > max + 0.01)        { setSettleErr(`Can't exceed ${formatAmount(max)}`); return; }
-    if (!settleAccountId)        { setSettleErr('Select an account'); return; }
+    const noCash = settleMode === 'free';
+    if (isNaN(amt) || amt <= 0)      { setSettleErr('Enter an amount'); return; }
+    if (amt > max + 0.01)            { setSettleErr(`Can't exceed ${formatAmount(max)}`); return; }
+    if (!noCash && !settleAccountId) { setSettleErr('Select an account'); return; }
     setSettleErr(''); setBusy(true);
     try {
-      // Full amount → omit so the backend clears it exactly.
-      await settleSplit(personId, amt >= max - 0.01 ? undefined : amt, settleAccountId, settleDate);
+      // Full amount → omit so the backend clears it exactly. No account → no-cash settle.
+      await settleSplit(personId, amt >= max - 0.01 ? undefined : amt, noCash ? undefined : settleAccountId, settleDate);
       setSettleOpen(false); await load(); onChanged();
     } finally { setBusy(false); }
   };
@@ -700,11 +702,24 @@ function DetailSheet({ personId, name, accounts, onClose, onChanged }: {
               );
             })}
           </div>
+          {/* How it's settled — real cash into/out of an account, or no money
+              at all (write-off / forgiven / settled outside the app). */}
+          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+            {[
+              { k: 'cash', label: owes ? 'They paid me' : 'I paid them' },
+              { k: 'free', label: 'Without money' },
+            ].map(o => (
+              <button key={o.k} onClick={() => setSettleMode(o.k as 'cash' | 'free')}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                  settleMode === o.k ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'
+                }`}>{o.label}</button>
+            ))}
+          </div>
           <div>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Date</p>
             <DateField value={settleDate} onChange={setSettleDate} max={todayStr()} />
           </div>
-          {accounts.length > 0 && (
+          {settleMode === 'cash' && accounts.length > 0 && (
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">
                 {owes ? 'Into which account?' : 'From which account?'}
@@ -720,6 +735,13 @@ function DetailSheet({ personId, name, accounts, onClose, onChanged }: {
                 ))}
               </div>
             </div>
+          )}
+          {settleMode === 'free' && (
+            <p className="text-[11px] text-slate-400 px-0.5 -mt-0.5">
+              {owes
+                ? `Clears what ${name} owes you without recording any money in — a write-off.`
+                : `Clears what you owe ${name} without recording any money out.`}
+            </p>
           )}
           {settleErr && <p className="text-xs text-rose-500 font-medium">{settleErr}</p>}
           <div className="flex gap-2">

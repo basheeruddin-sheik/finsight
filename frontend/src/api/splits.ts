@@ -37,7 +37,9 @@ export const createSplitGroup = (body: { iPaid: boolean; legs: SplitLeg[]; note?
   client.post<{ created: number }>('/splits/group', body).then(r => r.data);
 
 // Omit amount to clear the full balance; pass it for a partial settlement.
-export const settleSplit = (personId: string, amount: number | undefined, accountId: string, date?: string) =>
+// Omit accountId for a no-cash settle (write-off / forgiven — clears the
+// balance but moves no money).
+export const settleSplit = (personId: string, amount: number | undefined, accountId: string | undefined, date?: string) =>
   client.post<SplitDetail>('/splits/settle', { personId, amount, accountId, date }).then(r => r.data);
 
 export const deleteSplitEntry = (id: string) =>
