@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  getSplits, getSplitDetail, createSplitGroup, settleSplit,
+  getSplits, getSplitDetail, createSplitGroup, settleSplit, deleteSplitGroup,
   type SplitBalance, type SplitDetail, type SplitLeg,
 } from '../api/splits';
 import { getPersons } from '../api/persons';
@@ -744,6 +744,8 @@ function SplitFeedDetailSheet({ item, friends, accounts, onClose, onChanged }: {
 }) {
   const { getBehavior, getTypeIcon } = useConfig();
   const [editing, setEditing] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Single entries are already "one row = one thing" — go straight to view/edit.
   if (item.kind === 'txn') {
@@ -751,6 +753,12 @@ function SplitFeedDetailSheet({ item, friends, accounts, onClose, onChanged }: {
   }
 
   const legs = item.legs;
+
+  const handleDelete = async () => {
+    setConfirmDel(false); setDeleting(true);
+    try { await deleteSplitGroup(legs[0].splitGroupId!); onChanged(); }
+    catch { setDeleting(false); }
+  };
 
   // Editing a multi-person split is row-wise (the whole bill at once), not
   // person-wise — no more drilling into each leg separately to fix it.
@@ -788,10 +796,26 @@ function SplitFeedDetailSheet({ item, friends, accounts, onClose, onChanged }: {
         ))}
       </div>
 
-      <button onClick={() => setEditing(true)}
-        className="w-full py-3 rounded-2xl bg-indigo-600 text-white text-sm font-semibold flex items-center justify-center gap-1.5 active:opacity-80">
-        <Pencil size={15} strokeWidth={2} /> Edit split
-      </button>
+      <div className="flex gap-2">
+        <button onClick={() => setEditing(true)} disabled={deleting}
+          className="flex-1 py-3 rounded-2xl bg-indigo-600 text-white text-sm font-semibold flex items-center justify-center gap-1.5 active:opacity-80 disabled:opacity-40">
+          <Pencil size={15} strokeWidth={2} /> Edit split
+        </button>
+        <button onClick={() => setConfirmDel(true)} disabled={deleting}
+          className="flex-1 py-3 rounded-2xl border border-rose-200 bg-rose-50 text-rose-500 text-sm font-semibold flex items-center justify-center gap-1.5 active:opacity-80 disabled:opacity-40">
+          <Trash2 size={15} strokeWidth={2} /> Delete split
+        </button>
+      </div>
+
+      {confirmDel && (
+        <ConfirmModal
+          title="Delete split?"
+          message={`This permanently removes this split and all ${legs.length} ${legs.length === 1 ? 'entry' : 'entries'} in it, adjusting everyone's balance. This cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmDel(false)}
+        />
+      )}
     </BottomSheet>
   );
 }

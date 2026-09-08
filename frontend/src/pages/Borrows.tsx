@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getBorrowGroups, getBorrowSummary, settleBorrow, unsettleBorrow, type PersonBorrows, type Borrow, type BorrowAudit, type BorrowSummary } from '../api/borrows';
+import { deleteTransaction } from '../api/transactions';
 import { formatAmount, formatDate, formatTime } from '../utils';
 import { Spinner, EmptyState, BottomSheet, ConfirmModal } from '../components/ui';
 import PeopleTabs from '../components/PeopleTabs';
-import { HandCoins, Plus, ArrowDownLeft, ArrowUpRight, Percent, Check, RotateCcw, Ban, BookOpen, X, type LucideIcon } from 'lucide-react';
+import { HandCoins, Plus, ArrowDownLeft, ArrowUpRight, Percent, Check, RotateCcw, Ban, BookOpen, X, Trash2, type LucideIcon } from 'lucide-react';
 
 const latestActivity = (b: Borrow) => Math.max(...b.audit.map(a => new Date(a.createdAt ?? a.date).getTime()));
 const latestGroupActivity = (g: PersonBorrows) => Math.max(...g.borrows.map(latestActivity));
@@ -268,6 +269,15 @@ export default function Borrows() {
   const [ledgerPerson, setLedgerPerson] = useState<PersonBorrows | null>(null);
   const [ledger,   setLedger]   = useState(false);   // false = active view, true = ledger view
   const [confirm,  setConfirm]  = useState<{ borrows: Borrow[]; kind: 'settle' | 'reopen' } | null>(null);
+  const [confirmDel, setConfirmDel] = useState<Borrow | null>(null);
+  const [delPick,  setDelPick]  = useState<PersonBorrows | null>(null);
+
+  // From a person with several loans, "delete" has to name one — go straight
+  // to confirm when there's only a single loan, else ask which one first.
+  const startDelete = (g: PersonBorrows) => {
+    if (g.borrows.length === 1) setConfirmDel(g.borrows[0]);
+    else setDelPick(g);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -287,6 +297,17 @@ export default function Borrows() {
     const { borrows, kind } = confirm;
     setConfirm(null);
     await Promise.all(borrows.map(b => (kind === 'settle' ? settleBorrow(b.id) : unsettleBorrow(b.id))));
+    await load();
+  };
+
+  // Deleting a loan removes its lend transaction plus every repayment,
+  // interest and write-off entry tied to it (cascaded server-side).
+  const applyDelete = async () => {
+    if (!confirmDel) return;
+    const b = confirmDel;
+    setConfirmDel(null);
+    setLoan(null);
+    await deleteTransaction(b.id);
     await load();
   };
 
@@ -447,6 +468,10 @@ export default function Borrows() {
               className="w-full py-3 rounded-2xl border border-dashed border-slate-300 text-sm font-semibold text-slate-500 flex items-center justify-center gap-1.5">
               <Plus size={16} /> Lend more to {name}
             </button>
+            <button onClick={() => setConfirmDel(b)}
+              className="w-full py-3 rounded-2xl border border-rose-200 bg-rose-50 text-rose-500 text-sm font-semibold flex items-center justify-center gap-1.5 active:opacity-80">
+              <Trash2 size={16} strokeWidth={2} /> Delete loan
+            </button>
           </BottomSheet>
         );
       })()}
@@ -491,6 +516,10 @@ export default function Borrows() {
               className="w-full py-3 rounded-2xl border border-dashed border-slate-300 text-sm font-semibold text-slate-500 flex items-center justify-center gap-1.5">
               <Plus size={16} /> Lend more to {g.person.name}
             </button>
+            <button onClick={() => startDelete(g)}
+              className="w-full py-3 rounded-2xl border border-rose-200 bg-rose-50 text-rose-500 text-sm font-semibold flex items-center justify-center gap-1.5 active:opacity-80">
+              <Trash2 size={16} strokeWidth={2} /> Delete {g.borrows.length > 1 ? 'a loan' : 'loan'}
+            </button>
           </BottomSheet>
         );
       })()}
@@ -529,6 +558,48 @@ export default function Borrows() {
             variant="confirm"
             onConfirm={applyConfirm}
             onCancel={() => setConfirm(null)}
+          />
+        );
+      })()}
+
+      {delPick && (
+        <BottomSheet title="Delete which loan?" onClose={() => setDelPick(null)}>
+          <p className="text-sm text-slate-400 -mt-1">
+            {delPick.person.name} has {delPick.borrows.length} loans — pick the one to delete.
+          </p>
+          <div className="flex flex-col gap-2">
+            {[...delPick.borrows]
+              .sort((a, b) => latestActivity(b) - latestActivity(a))
+              .map(b => (
+                <button key={b.id} onClick={() => { setConfirmDel(b); setDelPick(null); }}
+                  className="w-full rounded-2xl border border-slate-200 p-4 flex items-center justify-between gap-3 text-left active:bg-slate-50">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800 truncate">
+                      {formatAmount(b.principal)}{b.note ? ` · ${b.note}` : ''}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Lent {formatDate(b.date)} · {b.status === 'SETTLED' ? 'Settled' : `${formatAmount(b.outstanding)} to get back`}
+                    </p>
+                  </div>
+                  <Trash2 size={16} strokeWidth={2} className="text-rose-400 shrink-0" />
+                </button>
+              ))}
+          </div>
+        </BottomSheet>
+      )}
+
+      {confirmDel && (() => {
+        const b = confirmDel;
+        const extras = b.audit.length - 1;  // audit always includes the "given" entry
+        return (
+          <ConfirmModal
+            title="Delete loan?"
+            message={`This permanently deletes the ${formatAmount(b.principal)} loan${b.note ? ` (${b.note})` : ''}${
+              extras > 0 ? ` and its ${extras} repayment/interest ${extras === 1 ? 'entry' : 'entries'}` : ''
+            }. This cannot be undone.`}
+            confirmLabel="Delete"
+            onConfirm={applyDelete}
+            onCancel={() => setConfirmDel(null)}
           />
         );
       })()}
