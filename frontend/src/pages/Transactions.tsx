@@ -84,7 +84,8 @@ export default function Transactions() {
   const visible = payF ? transactions.filter(t => t.paymentMethod === payF) : transactions;
   const { count, sentinelRef } = useIncremental(visible.length, PAGE);
   const groups  = groupByDay(visible.slice(0, count));
-  const activeFilters = (typeF !== 'ALL' ? 1 : 0) + (catF ? 1 : 0) + (payF ? 1 : 0) + (search.trim() ? 1 : 0);
+  // Search has its own always-visible box, so it isn't part of the Filters badge.
+  const activeFilters = (typeF !== 'ALL' ? 1 : 0) + (catF ? 1 : 0) + (payF ? 1 : 0);
 
   const clearAll = () => { setTypeF('ALL'); setCatF(''); setPayF(''); setSearch(''); };
 
@@ -101,6 +102,16 @@ export default function Transactions() {
             <SlidersHorizontal size={15} strokeWidth={2} /> Filters
             {activeFilters > 0 && <span className="w-4 h-4 rounded-full bg-indigo-600 text-white text-[9px] font-bold flex items-center justify-center">{activeFilters}</span>}
           </button>
+        </div>
+
+        {/* Search — always visible */}
+        <div className="px-4 pb-3">
+          <div className="flex items-center gap-2 bg-slate-50 rounded-xl border border-slate-200 px-3 py-2.5 focus-within:border-indigo-300 focus-within:bg-white transition-colors">
+            <Search size={16} className="text-slate-400 shrink-0" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by note or description…"
+              className="flex-1 text-sm text-slate-800 bg-transparent outline-none placeholder:text-slate-400" />
+            {search && <button onClick={() => setSearch('')} className="text-slate-400 active:text-slate-600"><X size={15} strokeWidth={2.5} /></button>}
+          </div>
         </div>
 
         {/* Period chips (scrollable) */}
@@ -135,7 +146,6 @@ export default function Transactions() {
             {typeF !== 'ALL' && <RemovablePill label={getTypeLabel(typeF)} onClear={() => setTypeF('ALL')} />}
             {catF && <RemovablePill label={getCategoryLabel(catF)} onClear={() => setCatF('')} />}
             {payF && <RemovablePill label={PAYMENT_LABELS[payF as PaymentMethod]} onClear={() => setPayF('')} />}
-            {search.trim() && <RemovablePill label={`"${search.trim()}"`} onClear={() => setSearch('')} />}
             <button onClick={clearAll} className="text-xs font-semibold text-slate-400 whitespace-nowrap shrink-0">Clear all</button>
           </div>
         )}
@@ -200,16 +210,6 @@ export default function Transactions() {
       {/* Filters sheet */}
       {showFilters && (
         <BottomSheet title="Filters" onClose={() => setShowFilters(false)}>
-          <div>
-            <FLabel>Search</FLabel>
-            <div className="flex items-center gap-2 bg-slate-50 rounded-xl border border-slate-200 px-3 py-2.5">
-              <Search size={15} className="text-slate-400 shrink-0" />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Note or description…"
-                className="flex-1 text-sm text-slate-800 bg-transparent outline-none placeholder:text-slate-400" />
-              {search && <button onClick={() => setSearch('')} className="text-slate-400"><X size={14} strokeWidth={2.5} /></button>}
-            </div>
-          </div>
-
           <div>
             <FLabel>Type</FLabel>
             <div className="flex flex-wrap gap-2">
