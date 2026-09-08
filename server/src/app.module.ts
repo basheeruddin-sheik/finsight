@@ -4,6 +4,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { TransactionsModule } from './transactions/transactions.module';
 import { PersonsModule } from './persons/persons.module';
 import { BorrowsModule } from './borrows/borrows.module';
+import { InvestmentsModule } from './investments/investments.module';
 import { SplitsModule } from './splits/splits.module';
 import { ReportsModule } from './reports/reports.module';
 import { BudgetsModule } from './budgets/budgets.module';
@@ -23,6 +24,7 @@ import { TenantInterceptor } from './onboarding/tenant.interceptor';
     TransactionsModule,
     PersonsModule,
     BorrowsModule,
+    InvestmentsModule,
     SplitsModule,
     ReportsModule,
     BudgetsModule,

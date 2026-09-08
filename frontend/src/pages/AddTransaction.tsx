@@ -5,6 +5,7 @@ import { getPersons } from '../api/persons';
 import { getAccounts } from '../api/accounts';
 import { accountLabel } from '../data/banks';
 import { getPersonBorrows, type Borrow } from '../api/borrows';
+import { getInvestments, type InvestmentPosition } from '../api/investments';
 import type { PaymentMethod, Person, Account } from '../types';
 import { formatAmount, formatDate, PAYMENT_LABELS } from '../utils';
 import { useConfig } from '../context/ConfigContext';
@@ -42,7 +43,7 @@ export default function AddTransaction() {
   const navigate = useNavigate();
   const [sp] = useSearchParams();
   const amountRef = useRef<HTMLInputElement>(null);
-  const { config, activeTypes, activeCategories } = useConfig();
+  const { config, activeTypes, activeCategories, getCategoryLabel, getCategoryIcon } = useConfig();
   const pendingBorrow = useRef(sp.get('borrow') ?? '');
 
   const [amount,        setAmount]        = useState('');
@@ -61,6 +62,7 @@ export default function AddTransaction() {
   const [costBasis,     setCostBasis]     = useState('');           // INVESTMENT_RETURN
   const [borrowId,      setBorrowId]      = useState('');           // repayment / interest target
   const [personBorrows, setPersonBorrows] = useState<Borrow[]>([]);
+  const [investments,   setInvestments]   = useState<InvestmentPosition[]>([]);  // INVESTMENT_RETURN — per-category positions
 
   useEffect(() => {
     amountRef.current?.focus();
@@ -129,6 +131,26 @@ export default function AddTransaction() {
     }
   }, [needsBorrow, isInterest, personId, type]);
 
+  // Load per-category investment positions when recording an investment return,
+  // so the user picks which type (FD / MF / Gold / …) they're breaking.
+  useEffect(() => {
+    if (isDivest) {
+      getInvestments().then(setInvestments).catch(() => setInvestments([]));
+    } else {
+      setInvestments([]);
+    }
+  }, [isDivest]);
+
+  // The chosen position is just whichever investment category is selected, so
+  // long as something is still invested in it.
+  const selectedInvestment = investments.find(i => i.category === category && i.remaining > 0) ?? null;
+  const pickInvestment = (pos: InvestmentPosition) => {
+    setCategory(pos.category);
+    // Default to a full break — the whole remaining amount comes out. The user
+    // can lower it below for a partial redemption.
+    setCostBasis(String(pos.remaining));
+  };
+
   const numAmount = Number(amount);
   const validAmount = !!amount && !isNaN(numAmount) && numAmount > 0;
   const amtColor = !amount ? 'text-slate-300' : isCredit ? 'text-emerald-500' : 'text-slate-900';
@@ -140,6 +162,15 @@ export default function AddTransaction() {
     if (!note.trim()) { setError('Add a note'); return; }
     if (needsPerson && !personId) { setError('Select a person'); return; }
     if (needsBorrow && !borrowId) { setError('Select which borrow this applies to'); return; }
+    if (isDivest) {
+      if (!investments.some(i => i.remaining > 0)) { setError('Record an investment first before breaking one'); return; }
+      if (!selectedInvestment) { setError('Select which investment you’re breaking'); return; }
+      const cost = Number(costBasis);
+      if (!costBasis || isNaN(cost) || cost <= 0) { setError('Enter how much of the original investment is coming out'); return; }
+      if (cost > selectedInvestment.remaining + 0.01) {
+        setError(`Can't exceed the ${formatAmount(selectedInvestment.remaining)} still invested`); return;
+      }
+    }
     if (!accountId) { setError('Select an account'); return; }
     setSaving(true); setError('');
     try {
@@ -278,8 +309,9 @@ export default function AddTransaction() {
             </div>
           </div>
 
-          {/* Category */}
-          {showCats && (
+          {/* Category — hidden for an investment return, where the chosen
+              holding supplies the category instead of a free pick. */}
+          {showCats && !isDivest && (
             <div>
               <Label>Category</Label>
               <div className="grid grid-cols-4 gap-2">
@@ -296,6 +328,46 @@ export default function AddTransaction() {
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Which investment type? — for an investment return / break */}
+          {isDivest && (
+            <div>
+              <Label>Which investment are you breaking?</Label>
+              {investments.length === 0 ? (
+                <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
+                  <p className="text-sm text-amber-700 font-medium">No investments yet.</p>
+                  <p className="text-xs text-amber-500 mt-0.5">Record an "Investment" first, then come back to break it.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {investments.map(pos => {
+                    const empty  = pos.remaining <= 0;   // fully redeemed — nothing left to break
+                    const active = !empty && category === pos.category;
+                    return (
+                      <button key={pos.category} onClick={() => !empty && pickInvestment(pos)} disabled={empty}
+                        className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-left transition-all ${
+                          empty ? 'border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed'
+                          : active ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-white'
+                        }`}>
+                        <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${active ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300'}`}>
+                          {active && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </div>
+                        <span className={`w-8 h-8 rounded-lg shrink-0 flex items-center justify-center ${active ? 'bg-indigo-100' : 'bg-slate-100'}`}>
+                          <ConfigIcon name={getCategoryIcon(pos.category)} size={17} className={active ? 'text-indigo-600' : getIconColor(getCategoryIcon(pos.category)).text} />
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-800 truncate">{getCategoryLabel(pos.category)}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {empty ? 'Fully redeemed' : `${formatAmount(pos.remaining)} invested`}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -379,25 +451,38 @@ export default function AddTransaction() {
             </div>
           )}
 
-          {/* Cost basis — for an investment return (sell / redeem) */}
-          {isDivest && (
+          {/* How much of the chosen holding is coming out — drives the portfolio
+              draw-down. Prefilled to the full remaining principal (a full break);
+              lower it for a partial redemption. */}
+          {isDivest && selectedInvestment && (
             <div>
-              <Label>Original amount invested (optional)</Label>
+              <Label>Original amount coming out</Label>
               <div className="bg-white rounded-2xl px-4 py-3 border border-slate-100 shadow-sm flex items-center gap-2">
                 <span className="text-slate-400 font-semibold">₹</span>
                 <input type="text" inputMode="decimal" placeholder="0"
                   value={costBasis} onChange={e => setCostBasis(e.target.value.replace(/[^0-9.]/g, ''))}
                   className="w-full text-[15px] font-semibold text-slate-800 outline-none bg-transparent placeholder:text-slate-300" />
+                <button onClick={() => setCostBasis(String(selectedInvestment.remaining))}
+                  className="shrink-0 text-[11px] font-bold text-indigo-600 bg-indigo-50 rounded-lg px-2 py-1 active:bg-indigo-100">
+                  Full · {formatAmount(selectedInvestment.remaining)}
+                </button>
               </div>
               {(() => {
                 const cost = Number(costBasis);
-                if (!costBasis || isNaN(cost) || cost <= 0 || !validAmount) {
-                  return <p className="text-[11px] text-slate-400 mt-1.5 px-1">What you originally put in. We’ll compute your profit / loss.</p>;
+                const rem = selectedInvestment.remaining;
+                if (!costBasis || isNaN(cost) || cost <= 0) {
+                  return <p className="text-[11px] text-slate-400 mt-1.5 px-1">How much of the {formatAmount(rem)} invested is being withdrawn.</p>;
                 }
+                const after = Math.max(Math.round((rem - cost) * 100) / 100, 0);
+                const remainLine = `${formatAmount(after)} stays invested after this`;
+                if (!validAmount) return <p className="text-[11px] text-slate-400 mt-1.5 px-1">{remainLine}</p>;
                 const pnl = numAmount - cost;
-                if (pnl > 0)  return <p className="text-[11px] font-semibold text-emerald-600 mt-1.5 px-1">Profit of {formatAmount(pnl)}</p>;
-                if (pnl < 0)  return <p className="text-[11px] font-semibold text-rose-500 mt-1.5 px-1">Loss of {formatAmount(Math.abs(pnl))}</p>;
-                return <p className="text-[11px] font-semibold text-slate-500 mt-1.5 px-1">Break even — no profit or loss</p>;
+                const pnlLine = pnl > 0
+                  ? <span className="text-emerald-600">Profit of {formatAmount(pnl)}</span>
+                  : pnl < 0
+                    ? <span className="text-rose-500">Loss of {formatAmount(Math.abs(pnl))}</span>
+                    : <span className="text-slate-500">Break even</span>;
+                return <p className="text-[11px] font-semibold mt-1.5 px-1">{pnlLine} · <span className="text-slate-400 font-medium">{remainLine}</span></p>;
               })()}
             </div>
           )}

@@ -9,5 +9,6 @@ export class UpdateTransactionDto {
   borrowId?: string;
   interestExpected?: number;
   settled?: boolean;
+  costBasis?: number;
   accountId?: string;
 }
