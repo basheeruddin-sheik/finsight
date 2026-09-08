@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { updateTransaction, deleteTransaction } from '../api/transactions';
+import { getInvestments, type InvestmentPosition } from '../api/investments';
 import { getAccounts } from '../api/accounts';
 import { accountLabel } from '../data/banks';
 import type { Transaction, PaymentMethod, Person, Account } from '../types';
@@ -49,6 +50,8 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
   const [personId,  setPersonId]  = useState(t.personId ?? '');
   const [accountId, setAccountId] = useState(t.accountId ?? '');
   const [accounts,  setAccounts]  = useState<Account[]>([]);
+  const [costBasis, setCostBasis] = useState(String(t.costBasis ?? 0));   // INVESTMENT_RETURN
+  const [investments, setInvestments] = useState<InvestmentPosition[]>([]);
 
   // Fetch active AND archived accounts — a transaction can reference an
   // account that's since been archived, and we still need its name to show
@@ -98,8 +101,27 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
   const typeConf        = config.types.find(x => x.key === type);
   const needsPerson     = typeConf?.requiresPerson ?? false;
   const showCats        = typeConf?.hasCategories  ?? false;
+  const isDivest        = typeConf?.behavior === 'DIVEST';
   const filteredPersons = typeConf?.personType === 'FAMILY' ? persons.filter(p => p.type === 'FAMILY') : persons;
   const personName      = t.person?.name ?? persons.find(p => p.id === t.personId)?.name;
+
+  // Load per-category investment positions when editing an investment return.
+  useEffect(() => {
+    if (isDivest) getInvestments().then(setInvestments).catch(() => setInvestments([]));
+  }, [isDivest]);
+
+  // How much of a type is available to withdraw on THIS return. The position's
+  // `remaining` already has this return subtracted, so editing its own type
+  // gets its original cost basis added back as headroom; a different type
+  // offers only its own remaining.
+  const origCost = t.costBasis ?? 0;
+  const availableFor = (pos: InvestmentPosition) =>
+    Math.round((pos.remaining + (pos.category === t.category ? origCost : 0)) * 100) / 100;
+  const selectedInvestment = investments.find(i => i.category === category) ?? null;
+  const pickInvestment = (pos: InvestmentPosition) => {
+    setCategory(pos.category);
+    setCostBasis(String(availableFor(pos)));   // default to a full break
+  };
 
   const handleDelete = async () => {
     setConfirm(false); setSaving(true);
@@ -111,11 +133,20 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
     const amt = Number(amount);
     if (!amount || isNaN(amt) || amt <= 0) { setError('Enter a valid amount'); return; }
     if (needsPerson && !personId) { setError('Select a person'); return; }
+    if (isDivest) {
+      if (!selectedInvestment) { setError('Select which investment you’re breaking'); return; }
+      const cost = Number(costBasis);
+      if (!costBasis || isNaN(cost) || cost <= 0) { setError('Enter how much of the original investment is coming out'); return; }
+      if (cost > availableFor(selectedInvestment) + 0.01) {
+        setError(`Can't exceed the ${formatAmount(availableFor(selectedInvestment))} available`); return;
+      }
+    }
     setSaving(true); setError('');
     try {
       await updateTransaction(t.id, {
         type: type as any, amount: amt, date,
         category: showCats ? category : undefined,
+        costBasis: isDivest ? Number(costBasis) : undefined,
         paymentMethod: payment,
         personId: needsPerson ? personId : undefined,
         note: note.trim() || undefined,
@@ -266,8 +297,9 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
               </div>
             </div>
 
-            {/* Category */}
-            {showCats && (
+            {/* Category — hidden for an investment return; the chosen type
+                supplies the category instead. */}
+            {showCats && !isDivest && (
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Category</p>
                 <div className="grid grid-cols-4 gap-2">
@@ -281,6 +313,55 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* Which investment type? — for an investment return */}
+            {isDivest && (
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Which investment?</p>
+                <div className="flex flex-col gap-2">
+                  {investments.map(pos => {
+                    const avail  = availableFor(pos);
+                    const empty  = avail <= 0;
+                    const active = !empty && category === pos.category;
+                    return (
+                      <button key={pos.category} onClick={() => !empty && pickInvestment(pos)} disabled={empty}
+                        className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-left transition-all ${
+                          empty ? 'border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed'
+                          : active ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-white'
+                        }`}>
+                        <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${active ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300'}`}>
+                          {active && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </div>
+                        <span className={`w-8 h-8 rounded-lg shrink-0 flex items-center justify-center ${active ? 'bg-indigo-100' : 'bg-slate-100'}`}>
+                          <ConfigIcon name={getCategoryIcon(pos.category)} size={17} className={active ? 'text-indigo-600' : getIconColor(getCategoryIcon(pos.category)).text} />
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-800 truncate">{getCategoryLabel(pos.category)}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">{empty ? 'Fully redeemed' : `${formatAmount(avail)} available`}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Original amount coming out — for an investment return */}
+            {isDivest && selectedInvestment && (
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Original amount coming out</p>
+                <div className="bg-slate-50 rounded-2xl px-4 py-3 border border-slate-100 flex items-center gap-2">
+                  <span className="text-slate-400 font-semibold">₹</span>
+                  <input type="text" inputMode="decimal" placeholder="0" value={costBasis}
+                    onChange={e => setCostBasis(e.target.value.replace(/[^0-9.]/g, ''))}
+                    className="w-full text-[15px] font-semibold text-slate-800 outline-none bg-transparent placeholder:text-slate-300" />
+                  <button onClick={() => setCostBasis(String(availableFor(selectedInvestment)))}
+                    className="shrink-0 text-[11px] font-bold text-indigo-600 bg-indigo-50 rounded-lg px-2 py-1 active:bg-indigo-100">
+                    Full · {formatAmount(availableFor(selectedInvestment))}
+                  </button>
                 </div>
               </div>
             )}
