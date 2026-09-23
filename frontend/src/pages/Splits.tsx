@@ -1,19 +1,62 @@
 import { useEffect, useState } from 'react';
 import {
-  getSplits, getSplitDetail, createSplitGroup, settleSplit, deleteSplitGroup,
+  getSplits, getSplitDetail, createSplitGroup, settleSplit, deleteSplitGroup, setSplitGroupAttachments,
   type SplitBalance, type SplitDetail, type SplitLeg,
 } from '../api/splits';
 import { getPersons } from '../api/persons';
 import { getAccounts } from '../api/accounts';
 import { accountLabel } from '../data/banks';
 import { getTransactions, createTransaction, updateTransaction, deleteTransaction } from '../api/transactions';
+import { getViewUrls } from '../api/storage';
 import type { Person, Transaction, Account } from '../types';
 import { formatAmount, formatTime, formatDateLongUTC, todayStr, currentMonth, monthRangeFor, groupByDay, collapseSplitGroups, type FeedItem } from '../utils';
 import { Spinner, EmptyState, BottomSheet, DateField, IconCircle, ConfirmModal } from '../components/ui';
+import AttachmentsPicker from '../components/AttachmentsPicker';
 import PeopleTabs from '../components/PeopleTabs';
 import { useConfig } from '../context/ConfigContext';
 import { ConfigIcon, getIconColor } from '../components/configIcons';
-import { Users, Plus, ChevronRight, ChevronLeft, Check, Pencil, Trash2, Wallet, ArrowLeftRight } from 'lucide-react';
+import { Users, Plus, ChevronRight, ChevronLeft, Check, Pencil, Trash2, Wallet, ArrowLeftRight, X } from 'lucide-react';
+
+// Read-only thumbnail grid + tap-to-enlarge for a transaction's/split's bills.
+// Fetches short-lived signed URLs for the given private object paths.
+function ReceiptGrid({ paths }: { paths: string[] }) {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  useEffect(() => {
+    if (paths.length) getViewUrls(paths).then(setUrls).catch(() => {});
+  }, [paths.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (paths.length === 0) return null;
+  return (
+    <div>
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Bills / Receipts</p>
+      <div className="flex flex-wrap gap-2">
+        {paths.map(p => (
+          <button key={p} type="button" onClick={() => urls[p] && setLightbox(p)}
+            className="w-20 h-20 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shrink-0 active:opacity-80">
+            {urls[p]
+              ? <img src={urls[p]} alt="receipt" className="w-full h-full object-cover" />
+              : <span className="w-full h-full flex items-center justify-center text-slate-300 text-xs">…</span>}
+          </button>
+        ))}
+      </div>
+      {lightbox && urls[lightbox] && (
+        <div onClick={() => setLightbox(null)}
+          className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4">
+          <button onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/15 text-white flex items-center justify-center">
+            <X size={18} strokeWidth={2.5} />
+          </button>
+          <img src={urls[lightbox]} alt="receipt" className="max-w-full max-h-full object-contain rounded-lg" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Union of attachment paths across a set of split legs (all legs mirror them).
+function legAttachments(legs: Transaction[]): string[] {
+  return [...new Set(legs.flatMap(l => l.attachments ?? []))];
+}
 
 function prevMonth(m: string) {
   const [y, mo] = m.split('-').map(Number);
@@ -347,6 +390,7 @@ function AddSplitSheet({ friends, accounts, onClose, onSaved }: {
 
   const [date,   setDate]   = useState(todayStr());
   const [note,   setNote]   = useState('');
+  const [attachments, setAttachments] = useState<string[]>([]);
   const [error,  setError]  = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -391,6 +435,7 @@ function AddSplitSheet({ friends, accounts, onClose, onSaved }: {
           myShare: myShare > 0 ? myShare : undefined,
           myShareCategory: myShare > 0 ? category : undefined,
           accountId,
+          attachments: attachments.length ? attachments : undefined,
         });
       } else {
         if (!oweId)      { setError('Pick a friend'); return; }
@@ -398,6 +443,7 @@ function AddSplitSheet({ friends, accounts, onClose, onSaved }: {
         setSaving(true);
         await createSplitGroup({
           iPaid: false, legs: [{ personId: oweId, amount: oweAmtN }], note: note.trim(), date, category,
+          attachments: attachments.length ? attachments : undefined,
         });
       }
       onSaved();
@@ -604,6 +650,9 @@ function AddSplitSheet({ friends, accounts, onClose, onSaved }: {
           )}
         </>
       )}
+
+      {/* Bills / receipts for this split */}
+      <AttachmentsPicker value={attachments} onChange={setAttachments} />
 
       {error && <p className="text-sm text-rose-500 font-medium">{error}</p>}
 
@@ -818,6 +867,8 @@ function SplitFeedDetailSheet({ item, friends, accounts, onClose, onChanged }: {
         ))}
       </div>
 
+      <ReceiptGrid paths={legAttachments(legs)} />
+
       <div className="flex gap-2">
         <button onClick={() => setEditing(true)} disabled={deleting}
           className="flex-1 py-3 rounded-2xl bg-indigo-600 text-white text-sm font-semibold flex items-center justify-center gap-1.5 active:opacity-80 disabled:opacity-40">
@@ -874,6 +925,7 @@ function EditSplitGroupSheet({ legs, friends, accounts, onBack, onChanged }: {
     for (const l of legs) map[l.person ? l.person.id : 'me'] = String(l.amount);
     return map;
   });
+  const [attachments, setAttachments] = useState<string[]>(() => legAttachments(legs));
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
 
@@ -938,6 +990,9 @@ function EditSplitGroupSheet({ legs, friends, accounts, onBack, onChanged }: {
       }
 
       await Promise.all(ops);
+      // Sync the shared bill set across all legs (incl. any just created) and
+      // clean up any removed images.
+      await setSplitGroupAttachments(groupId, attachments);
       onChanged();
     } catch { setError('Failed to save. Try again.'); setSaving(false); }
   };
@@ -1069,6 +1124,9 @@ function EditSplitGroupSheet({ legs, friends, accounts, onBack, onChanged }: {
         </div>
       )}
 
+      {/* Bills / receipts for this split */}
+      <AttachmentsPicker value={attachments} onChange={setAttachments} />
+
       {error && <p className="text-sm text-rose-500 font-medium">{error}</p>}
 
       <div className="flex gap-3 pb-2">
@@ -1104,6 +1162,7 @@ function SplitEntrySheet({ entry, accounts, onBack, onClose, onChanged }: {
   const [type,      setType]      = useState(entry.type);
   const [category,  setCategory]  = useState(entry.category ?? activeCategories[0]?.key ?? '');
   const [accountId, setAccountId] = useState(entry.accountId ?? '');
+  const [attachments, setAttachments] = useState<string[]>(entry.attachments ?? []);
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState('');
   const [confirmDel, setConfirmDel] = useState(false);
@@ -1153,6 +1212,7 @@ function SplitEntrySheet({ entry, accounts, onBack, onClose, onChanged }: {
         amount: amt, date, type, note: note.trim() || undefined,
         category: getBehavior(type) === 'SPLIT_OWE' ? category : undefined,
         accountId: showAccount ? accountId : undefined,
+        attachments,
       });
       onChanged();
     } catch { setError('Failed to save. Try again.'); setSaving(false); }
@@ -1196,6 +1256,8 @@ function SplitEntrySheet({ entry, accounts, onBack, onClose, onChanged }: {
               {accountEntity && <Row label="Account">{accountLabel(accountEntity)}</Row>}
               {entry.note && <Row label="Note">{entry.note}</Row>}
             </div>
+
+            <ReceiptGrid paths={entry.attachments ?? []} />
 
             {error && <p className="text-sm text-rose-500 font-medium">{error}</p>}
 
@@ -1277,6 +1339,8 @@ function SplitEntrySheet({ entry, accounts, onBack, onClose, onChanged }: {
               <input type="text" value={note} onChange={e => setNote(e.target.value)}
                 className="w-full text-[15px] text-slate-800 outline-none bg-transparent" />
             </div>
+
+            <AttachmentsPicker value={attachments} onChange={setAttachments} />
 
             {error && <p className="text-sm text-rose-500 font-medium">{error}</p>}
 

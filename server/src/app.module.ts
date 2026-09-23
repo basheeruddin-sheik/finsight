@@ -9,6 +9,7 @@ import { SplitsModule } from './splits/splits.module';
 import { ReportsModule } from './reports/reports.module';
 import { BudgetsModule } from './budgets/budgets.module';
 import { AccountsModule } from './accounts/accounts.module';
+import { StorageModule } from './storage/storage.module';
 import { ConfigModule } from './config/config.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
@@ -29,6 +30,7 @@ import { TenantInterceptor } from './onboarding/tenant.interceptor';
     ReportsModule,
     BudgetsModule,
     AccountsModule,
+    StorageModule,
   ],
   providers: [
     // Every route requires a valid Auth0 token (unless @Public).

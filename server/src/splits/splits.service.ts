@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import moment from 'moment';
 import { Transaction, TransactionDocument } from '../schemas/transaction.schema';
 import { Config, ConfigDocument } from '../schemas/config.schema';
+import { StorageService } from '../storage/storage.service';
 
 function round(n: number) { return Math.round(n * 100) / 100; }
 
@@ -23,6 +24,7 @@ export class SplitsService {
   constructor(
     @InjectModel(Transaction.name) private txnModel: Model<TransactionDocument>,
     @InjectModel(Config.name)      private configModel: Model<ConfigDocument>,
+    private readonly storage: StorageService,
   ) {}
 
   private async behaviorMap() {
@@ -108,6 +110,7 @@ export class SplitsService {
     myShareCategory?: string;
     category?: string;  // "I owe" only — what the debt is for (friend legs otherwise uncategorized)
     accountId?: string; // "I paid" only — the account the whole bill was paid from
+    attachments?: string[]; // shared bill/receipt images — mirrored onto every leg
   }) {
     const typeFor = await this.typeForBehavior();
     const typeKey = body.iPaid ? typeFor.get('SPLIT_LEND') : typeFor.get('SPLIT_OWE');
@@ -123,6 +126,9 @@ export class SplitsService {
     const myShareAmt = body.iPaid && body.myShare && body.myShare > 0 ? round(body.myShare) : 0;
     // Group when the bill produced more than one transaction (friends + your own share).
     const groupId = (valid.length + (myShareAmt > 0 ? 1 : 0)) > 1 ? randomUUID() : undefined;
+    // Bills belong to the whole split, so the same paths sit on every leg; the
+    // UI reads their union and edits/deletes keep the legs in sync.
+    const attachments = body.attachments ?? [];
 
     await Promise.all(valid.map(l => this.txnModel.create({
       type: typeKey,
@@ -134,6 +140,7 @@ export class SplitsService {
       note: body.note ?? undefined,
       splitGroupId: groupId,
       accountId,
+      attachments,
     })));
 
     let createdCount = valid.length;
@@ -149,6 +156,7 @@ export class SplitsService {
           note: body.note ? `${body.note} — your share` : 'Your share of a split',
           splitGroupId: groupId,
           accountId,
+          attachments,
         });
         createdCount++;
       }
@@ -200,8 +208,22 @@ export class SplitsService {
     return { deleted: true };
   }
 
+  // Replace the shared bill set for a split group: mirror the new paths onto
+  // every leg and remove any objects that were dropped.
+  async setGroupAttachments(splitGroupId: string, attachments: string[]) {
+    const docs = await this.txnModel.find({ splitGroupId });
+    const before = [...new Set(docs.flatMap(d => ((d as any).attachments ?? []) as string[]))];
+    const removed = before.filter(p => !attachments.includes(p));
+    await this.txnModel.updateMany({ splitGroupId }, { $set: { attachments } });
+    if (removed.length) await this.storage.remove(removed);
+    return { updated: docs.length };
+  }
+
   async deleteGroup(splitGroupId: string) {
+    const docs = await this.txnModel.find({ splitGroupId });
+    const paths = [...new Set(docs.flatMap(d => ((d as any).attachments ?? []) as string[]))];
     const res = await this.txnModel.deleteMany({ splitGroupId });
+    if (paths.length) await this.storage.remove(paths);
     return { deleted: res.deletedCount ?? 0 };
   }
 

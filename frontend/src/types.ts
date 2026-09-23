@@ -69,6 +69,7 @@ export interface Transaction {
   splitGroupId?: string | null;
   accountId?: string | null;
   toAccountId?: string | null;
+  attachments?: string[];   // receipt/bill image object paths
 }
 
 export interface TransactionSummary {
@@ -153,4 +154,5 @@ export interface CreateTransactionDto {
   interestExpected?: number;  // BORROW_GIVEN only
   costBasis?: number;         // INVESTMENT_RETURN only: original amount invested
   accountId?: string;         // which account this moved money in/out of
+  attachments?: string[];     // receipt/bill image object paths
 }

@@ -10,4 +10,5 @@ export class CreateTransactionDto {
   interestExpected?: number;  // BORROW_GIVEN only
   costBasis?: number;         // INVESTMENT_RETURN only: original amount invested
   accountId?: string;         // which account this moved money in/out of
+  attachments?: string[];     // receipt/bill image object paths
 }

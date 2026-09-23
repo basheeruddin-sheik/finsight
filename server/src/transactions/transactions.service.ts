@@ -6,6 +6,7 @@ import { Transaction, TransactionDocument } from '../schemas/transaction.schema'
 import { Config, ConfigDocument } from '../schemas/config.schema';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
+import { StorageService } from '../storage/storage.service';
 
 // Epoch numbers in DB → ISO strings in API so the frontend stays unchanged.
 const toISO = (epoch: number | null | undefined) =>
@@ -34,6 +35,7 @@ function toRes(doc: any) {
     splitGroupId: t.splitGroupId ?? null,
     accountId: t.accountId?.toString() ?? null,
     toAccountId: t.toAccountId?.toString() ?? null,
+    attachments: t.attachments ?? [],
   };
 }
 
@@ -42,6 +44,7 @@ export class TransactionsService {
   constructor(
     @InjectModel(Transaction.name) private model: Model<TransactionDocument>,
     @InjectModel(Config.name)      private configModel: Model<ConfigDocument>,
+    private readonly storage: StorageService,
   ) {}
 
   async findAll(filters: { type?: string; category?: string; from?: string; to?: string; search?: string }) {
@@ -83,6 +86,17 @@ export class TransactionsService {
   }
 
   async update(id: string, dto: UpdateTransactionDto) {
+    // If the attachment list changed, delete the receipt objects that were
+    // removed so nothing is orphaned in storage. Split legs share the same
+    // bill across the group and are cleaned up at the group level, so skip them.
+    if (dto.attachments !== undefined) {
+      const existing = await this.model.findById(id);
+      if (!(existing as any)?.splitGroupId) {
+        const before: string[] = (existing as any)?.attachments ?? [];
+        const removed = before.filter(p => !dto.attachments!.includes(p));
+        if (removed.length) await this.storage.remove(removed);
+      }
+    }
     const update: any = { ...dto };
     if (dto.date)                    update.date = moment.utc(dto.date, 'YYYY-MM-DD').valueOf();
     if (dto.personId !== undefined)  update.personId = dto.personId ? new Types.ObjectId(dto.personId) : null;
@@ -94,8 +108,13 @@ export class TransactionsService {
 
   // Deleting a borrow (the lend txn) also removes its repayment/interest entries.
   async delete(id: string) {
+    const doc = await this.model.findById(id);
+    // Split legs share their bill across the group (cleaned up by splits on
+    // group delete), so a single leg's deletion must not remove the objects.
+    const attachments: string[] = (doc as any)?.splitGroupId ? [] : ((doc as any)?.attachments ?? []);
     await this.model.deleteMany({ borrowId: new Types.ObjectId(id) });
     await this.model.findByIdAndDelete(id);
+    if (attachments.length) await this.storage.remove(attachments);
     return { deleted: true };
   }
 

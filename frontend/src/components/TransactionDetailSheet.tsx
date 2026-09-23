@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import { updateTransaction, deleteTransaction } from '../api/transactions';
 import { getInvestments, type InvestmentPosition } from '../api/investments';
+import { getViewUrls } from '../api/storage';
 import { getAccounts } from '../api/accounts';
+import AttachmentsPicker from './AttachmentsPicker';
 import { accountLabel } from '../data/banks';
 import type { Transaction, PaymentMethod, Person, Account } from '../types';
 import { formatAmount, formatTime, formatDateLongUTC, PAYMENT_LABELS } from '../utils';
 import { useConfig } from '../context/ConfigContext';
 import { BottomSheet, ConfirmModal, DateField } from './ui';
 import { ConfigIcon, IconBadge, getIconColor } from './configIcons';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, X } from 'lucide-react';
 
 const PAYMENTS: PaymentMethod[] = ['PHONEPE', 'GPAY', 'PAYTM', 'CASH', 'CREDIT_CARD', 'BANK_TRANSFER', 'WALLET'];
 
@@ -52,6 +54,9 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
   const [accounts,  setAccounts]  = useState<Account[]>([]);
   const [costBasis, setCostBasis] = useState(String(t.costBasis ?? 0));   // INVESTMENT_RETURN
   const [investments, setInvestments] = useState<InvestmentPosition[]>([]);
+  const [attachments, setAttachments] = useState<string[]>(t.attachments ?? []);
+  const [viewUrls, setViewUrls] = useState<Record<string, string>>({});   // signed URLs for view-mode thumbnails
+  const [lightbox, setLightbox] = useState<string | null>(null);          // full-screen image path
 
   // Fetch active AND archived accounts — a transaction can reference an
   // account that's since been archived, and we still need its name to show
@@ -110,6 +115,13 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
     if (isDivest) getInvestments().then(setInvestments).catch(() => setInvestments([]));
   }, [isDivest]);
 
+  // Signed URLs to render the transaction's receipt thumbnails in view mode.
+  useEffect(() => {
+    const paths = t.attachments ?? [];
+    if (paths.length === 0) return;
+    getViewUrls(paths).then(map => setViewUrls(prev => ({ ...prev, ...map }))).catch(() => {});
+  }, [t.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // How much of a type is available to withdraw on THIS return. The position's
   // `remaining` already has this return subtracted, so editing its own type
   // gets its original cost basis added back as headroom; a different type
@@ -151,6 +163,7 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
         personId: needsPerson ? personId : undefined,
         note: note.trim() || undefined,
         accountId: accountId || undefined,
+        attachments,
       });
       onChanged(); onClose();
     } catch { setError('Failed to save. Try again.'); setSaving(false); }
@@ -209,6 +222,23 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
               {t.note && <Row label="Note">{t.note}</Row>}
               {t.createdAt && <Row label="Added on">{longDate(t.createdAt)} · {formatTime(t.createdAt)}</Row>}
             </div>
+
+            {/* Receipts / bills */}
+            {(t.attachments?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Bills / Receipts</p>
+                <div className="flex flex-wrap gap-2">
+                  {t.attachments!.map(path => (
+                    <button key={path} type="button" onClick={() => viewUrls[path] && setLightbox(path)}
+                      className="w-20 h-20 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shrink-0 active:opacity-80">
+                      {viewUrls[path]
+                        ? <img src={viewUrls[path]} alt="receipt" className="w-full h-full object-cover" />
+                        : <span className="w-full h-full flex items-center justify-center text-slate-300 text-xs">…</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {error && <p className="text-sm text-rose-500 font-medium">{error}</p>}
 
@@ -383,6 +413,9 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
               </div>
             )}
 
+            {/* Bills / receipts */}
+            <AttachmentsPicker value={attachments} onChange={setAttachments} />
+
             {error && <p className="text-sm text-rose-500 font-medium">{error}</p>}
 
             <div className="flex gap-3 pb-2">
@@ -407,6 +440,19 @@ export default function TransactionDetailSheet({ transaction, persons, onClose, 
           onConfirm={handleDelete}
           onCancel={() => setConfirm(false)}
         />
+      )}
+
+      {/* Full-screen receipt viewer */}
+      {lightbox && viewUrls[lightbox] && (
+        <div onClick={() => setLightbox(null)}
+          className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <button onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/15 text-white flex items-center justify-center">
+            <X size={18} strokeWidth={2.5} />
+          </button>
+          <img src={viewUrls[lightbox]} alt="receipt" className="max-w-full max-h-full object-contain rounded-lg" />
+        </div>
       )}
     </>
   );

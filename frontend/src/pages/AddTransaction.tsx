@@ -10,6 +10,7 @@ import type { PaymentMethod, Person, Account } from '../types';
 import { formatAmount, formatDate, PAYMENT_LABELS } from '../utils';
 import { useConfig } from '../context/ConfigContext';
 import { PrimaryButton, DateField } from '../components/ui';
+import AttachmentsPicker from '../components/AttachmentsPicker';
 import { ConfigIcon, getIconColor } from '../components/configIcons';
 import { ChevronLeft } from 'lucide-react';
 
@@ -63,6 +64,7 @@ export default function AddTransaction() {
   const [borrowId,      setBorrowId]      = useState('');           // repayment / interest target
   const [personBorrows, setPersonBorrows] = useState<Borrow[]>([]);
   const [investments,   setInvestments]   = useState<InvestmentPosition[]>([]);  // INVESTMENT_RETURN — per-category positions
+  const [attachments,   setAttachments]   = useState<string[]>([]);              // receipt/bill image paths
 
   useEffect(() => {
     amountRef.current?.focus();
@@ -185,6 +187,7 @@ export default function AddTransaction() {
         borrowId: needsBorrow ? borrowId : undefined,
         interestExpected: isLend && interestExp ? Number(interestExp) : undefined,
         costBasis: isDivest && costBasis ? Number(costBasis) : undefined,
+        attachments: attachments.length ? attachments : undefined,
         accountId,
       });
       navigate('/');
@@ -486,6 +489,9 @@ export default function AddTransaction() {
               })()}
             </div>
           )}
+
+          {/* Bills / receipts */}
+          <AttachmentsPicker value={attachments} onChange={setAttachments} />
 
           {error && (
             <div className="bg-rose-50 border border-rose-100 rounded-2xl px-4 py-3">

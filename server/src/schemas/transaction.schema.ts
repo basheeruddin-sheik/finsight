@@ -20,6 +20,8 @@ export class Transaction {
   @Prop({ default: false }) settled: boolean;
   @Prop({ default: 0 })     costBasis: number;  // INVESTMENT_RETURN only: original amount invested being returned
   @Prop({ default: null })  splitGroupId: string;  // links the per-friend legs of one shared bill
+  // Private Supabase Storage object paths for attached receipt/bill images.
+  @Prop({ type: [String], default: [] }) attachments: string[];
 
   // Which bank/cash account this transaction moved money in/out of. Older
   // transactions predate this field and stay null — they're excluded from

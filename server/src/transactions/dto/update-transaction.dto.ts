@@ -11,4 +11,5 @@ export class UpdateTransactionDto {
   settled?: boolean;
   costBasis?: number;
   accountId?: string;
+  attachments?: string[];
 }
