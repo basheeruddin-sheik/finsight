@@ -1,0 +1,10 @@
+# Keep the build context small and never leak secrets/build artifacts.
+**/node_modules
+frontend
+docs
+.git
+.gitignore
+server/dist
+server/.env
+**/*.log
+start.sh
