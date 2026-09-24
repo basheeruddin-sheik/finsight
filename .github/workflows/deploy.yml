@@ -1,0 +1,50 @@
+name: Deploy backend
+
+# Build the NestJS image on GitHub's runners, push it to GHCR, then SSH into the
+# Oracle VM and restart the container. Runs only when the backend (or this
+# workflow) changes on the prod branch.
+on:
+  push:
+    branches: [prod]
+    paths:
+      - 'server/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch: {}   # allow manual runs from the Actions tab
+
+env:
+  IMAGE: ghcr.io/basheeruddin-sheik/finsight-server:latest
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server
+          push: true
+          tags: ${{ env.IMAGE }}
+
+      - name: Deploy on the VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            cd ~/finsight-deploy
+            docker compose pull
+            docker compose up -d
+            docker image prune -f
